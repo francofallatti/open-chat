@@ -4,6 +4,8 @@ Panel de chat de escritorio para modelos abiertos (DeepSeek, Kimi/Moonshot, Qwen
 
 Funciona igual que OpenCode Desktop: arranca el CLI de OpenCode como servidor local privado y le habla por su API HTTP. Por eso usa los mismos proveedores, modelos y credenciales que ya tengas en OpenCode.
 
+Hacia dónde va el proyecto: [ROADMAP.md](ROADMAP.md). Por qué está hecho así: [DECISIONS.md](DECISIONS.md).
+
 ## Requisitos
 
 - Rust estable (MSVC en Windows) y WebView2 (incluido en Windows 11).
@@ -31,7 +33,7 @@ cargo test                                         # pruebas
 
 Decisiones a tener en cuenta:
 
-- **Solo conversación.** Cada chat se crea con todos los permisos denegados: el modelo no puede leer ni escribir archivos ni ejecutar comandos.
+- **Solo conversación.** Cada chat se crea con todos los permisos denegados, salvo leer dentro de su carpeta de trabajo, que está vacía: el modelo no puede escribir archivos, ejecutar comandos ni leer el resto del disco. El motivo de esa excepción está en [DECISIONS.md](DECISIONS.md).
 - **Chats separados.** Las sesiones viven en `%APPDATA%\dev.openchat.desktop\workspace`; no se mezclan con tus proyectos de OpenCode, aunque comparten su base de datos.
 - **Claves.** "Proveedores y claves" guarda la clave en el almacén de credenciales de OpenCode. OpenChat no la conserva.
 - **Registro del motor:** `%APPDATA%\dev.openchat.desktop\server.log`.
