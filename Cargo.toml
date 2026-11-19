@@ -1,0 +1,29 @@
+[package]
+name = "openchat"
+version = "0.1.0"
+description = "Panel de chat de escritorio para modelos abiertos, sobre el motor de OpenCode"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde_json = "1"
+tokio = { version = "1", features = ["sync", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream"] }
+futures-util = "0.3"
+pulldown-cmark = { version = "0.12", default-features = false, features = ["html"] }
+ammonia = "4"
+uuid = { version = "1", features = ["v4"] }
+open = "5"
+
+[features]
+# Activar en builds de distribución: cargo build --release --features custom-protocol
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

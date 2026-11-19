@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenChat</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">OpenChat</span>
+      </div>
+
+      <button id="new-chat" class="nav-button" type="button">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12" /></svg>
+        Nuevo chat
+      </button>
+
+      <div class="section-label">Recientes</div>
+      <nav id="sessions" aria-label="Chats recientes"></nav>
+
+      <div class="sidebar-foot">
+        <button id="providers-btn" class="nav-button" type="button">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 9V6a3 3 0 0 1 6 0v3M5 9h10v7H5z" /></svg>
+          Proveedores y claves
+        </button>
+        <div id="status" class="status"><span class="dot"></span><span id="status-text">Iniciando…</span></div>
+      </div>
+    </aside>
+
+    <main id="main" class="empty">
+      <header id="topbar">
+        <button id="toggle-sidebar" class="icon-button" type="button" title="Mostrar u ocultar la barra lateral" aria-label="Mostrar u ocultar la barra lateral">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 4h14v12H3zM8 4v12" /></svg>
+        </button>
+        <div id="chat-title"></div>
+      </header>
+
+      <section id="thread-wrap">
+        <div id="thread"></div>
+      </section>
+
+      <section id="hero">
+        <h1 id="greeting">¿En qué te ayudo hoy?</h1>
+      </section>
+
+      <section id="composer-wrap">
+        <div id="notice" hidden></div>
+        <form id="composer" autocomplete="off">
+          <textarea id="input" rows="1" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
+          <div class="composer-row">
+            <div class="model-picker">
+              <button id="model-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+                <span id="model-label">Elegir modelo</span>
+                <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5" /></svg>
+              </button>
+              <div id="model-menu" hidden>
+                <input id="model-search" type="search" placeholder="Buscar modelo…" aria-label="Buscar modelo" />
+                <div id="model-list" role="listbox"></div>
+              </div>
+            </div>
+            <button id="send" class="send" type="submit" title="Enviar" aria-label="Enviar" disabled>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 16V4M5 9l5-5 5 5" /></svg>
+            </button>
+            <button id="stop" class="send stop" type="button" title="Detener" aria-label="Detener" hidden>
+              <svg viewBox="0 0 20 20" aria-hidden="true"><rect x="6" y="6" width="8" height="8" rx="1.5" /></svg>
+            </button>
+          </div>
+        </form>
+        <p class="footnote">Los modelos pueden equivocarse. Verifica la información importante.</p>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="providers-dialog">
+    <form method="dialog" class="dialog-head">
+      <h2>Proveedores y claves</h2>
+      <button class="icon-button" type="submit" aria-label="Cerrar">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" /></svg>
+      </button>
+    </form>
+    <p class="dialog-note">
+      Conecta un proveedor con su clave de API para usar sus modelos (DeepSeek, Kimi/Moonshot, OpenRouter…).
+      La clave se guarda en el almacén de credenciales de OpenCode; OpenChat no la conserva.
+    </p>
+    <input id="provider-search" type="search" placeholder="Buscar proveedor…" aria-label="Buscar proveedor" />
+    <div id="provider-list"></div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
