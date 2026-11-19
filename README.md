@@ -26,8 +26,8 @@ cargo test                                         # pruebas
 
 | Pieza | Archivo | Qué hace |
 | --- | --- | --- |
-| Motor | `src/backend.rs` | Lanza `opencode-cli serve` en un puerto libre de `127.0.0.1`, con una contraseña aleatoria que solo vive en memoria. Lee el flujo SSE `/api/event` y lo reenvía a la vista. Detiene el servidor al cerrar. |
-| Comandos | `src/main.rs` | Comandos Tauri acotados: modelos, chats, mensajes, enviar, detener, proveedores. La vista no tiene acceso libre a la API. |
+| Motor | `src/engine.rs` | Lanza `opencode-cli serve` en un puerto libre de `127.0.0.1`, con una contraseña aleatoria que solo vive en memoria. Lee el flujo SSE `/api/event` y lo reenvía a la vista. Detiene el servidor al cerrar. |
+| Comandos | `src/main.rs` | Comandos Tauri acotados: modelos, chats, mensajes, enviar, detener, proveedores. Solo llaman al motor; no conocen la API de OpenCode. La vista no tiene acceso libre a la API. |
 | Markdown | `src/markdown.rs` | Convierte la respuesta del modelo a HTML y la sanea (sin scripts ni imágenes remotas). |
 | Vista | `ui/` | HTML, CSS y JavaScript sin dependencias ni paso de compilación. |
 
