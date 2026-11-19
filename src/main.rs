@@ -36,6 +36,8 @@ async fn init(app: AppHandle, state: State<'_, AppState>) -> Result<Value, Strin
     let engine = engine(&app, &state).await?;
     Ok(json!({
         "version": engine.version,
+        "tested": engine.version_tested(),
+        "testedSeries": format!("{}.{}", engine::TESTED_SERIES.0, engine::TESTED_SERIES.1),
         "cli": engine.cli.display().to_string(),
         "workspace": engine.workspace.display().to_string(),
     }))

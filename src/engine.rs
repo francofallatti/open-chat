@@ -20,6 +20,9 @@ const USER: &str = "opencode";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const STARTUP_ATTEMPTS: u32 = 80;
 const STARTUP_INTERVAL: Duration = Duration::from_millis(500);
+/// Serie de OpenCode (mayor, menor) contra la que se probó OpenChat. La API v2
+/// todavía cambia entre versiones menores, así que otra serie solo se avisa.
+pub const TESTED_SERIES: (u64, u64) = (2, 3);
 
 pub struct Engine {
     client: reqwest::Client,
@@ -112,6 +115,11 @@ impl Engine {
             tokio::time::sleep(STARTUP_INTERVAL).await;
         }
         Err("El servidor de OpenCode no respondió a tiempo; se requiere OpenCode v2".into())
+    }
+
+    /// Indica si el motor en uso es de la serie probada.
+    pub fn version_tested(&self) -> bool {
+        series(&self.version) == Some(TESTED_SERIES)
     }
 
     fn exit_status(&self) -> Option<String> {
@@ -590,6 +598,14 @@ fn locate_cli() -> Result<PathBuf, String> {
     Ok(PathBuf::from("opencode"))
 }
 
+/// Mayor y menor de una versión como `2.3.2` o `v2.3.2-beta.1`.
+fn series(version: &str) -> Option<(u64, u64)> {
+    let mut parts = version.trim().trim_start_matches('v').split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    Some((major, minor))
+}
+
 fn free_port() -> Result<u16, String> {
     let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|e| e.to_string())?;
     listener.local_addr().map(|a| a.port()).map_err(|e| e.to_string())
@@ -597,7 +613,9 @@ fn free_port() -> Result<u16, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{checked_id, drain_events, is_relevant, own_error, with_own_error, ErrorKind};
+    use super::{
+        checked_id, drain_events, is_relevant, own_error, series, with_own_error, ErrorKind,
+    };
     use serde_json::json;
 
     #[test]
@@ -607,6 +625,15 @@ mod tests {
         assert!(checked_id("ses_1/../../shell", "ses_").is_err());
         assert!(checked_id("ses_1?x=1", "ses_").is_err());
         assert!(checked_id("msg_123", "ses_").is_err());
+    }
+
+    #[test]
+    fn reads_the_series_of_a_version() {
+        assert_eq!(series("2.3.2"), Some((2, 3)));
+        assert_eq!(series("v2.10.0-beta.1"), Some((2, 10)));
+        assert_eq!(series("2"), None);
+        assert_eq!(series(""), None);
+        assert_eq!(series("dev"), None);
     }
 
     #[test]

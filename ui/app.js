@@ -610,8 +610,11 @@ async function boot() {
   try {
     const info = await invoke("init");
     state.ready = true;
-    setStatus("ok", `Motor OpenCode ${info.version}`);
+    setStatus("ok", `Motor OpenCode ${info.version}${info.tested ? "" : " · versión no probada"}`);
     await Promise.all([loadModels(), loadSessions()]);
+    if (!info.tested) {
+      showNotice(`OpenChat se probó con OpenCode ${info.testedSeries}.x y tienes la ${info.version}. Si algo falla, puede deberse a la diferencia de versión.`);
+    }
   } catch (error) {
     setStatus("error", "Motor no disponible");
     showNotice(`No se pudo iniciar el motor de OpenCode: ${errorText(error)}`);
