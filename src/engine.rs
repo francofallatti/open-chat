@@ -321,7 +321,7 @@ impl Engine {
                 _ => break,
             };
             let received = items.len();
-            messages.extend(items);
+            messages.extend(items.into_iter().map(with_own_error));
 
             cursor = page
                 .pointer("/cursor/next")
@@ -400,6 +400,109 @@ impl Engine {
             .await
             .map(|_| ())
     }
+}
+
+/// Categorías de error propias de OpenChat. La vista decide qué mostrar y qué
+/// acción ofrecer a partir de estas, sin conocer los códigos de OpenCode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ErrorKind {
+    /// Se agotó el cupo del modelo o del plan.
+    Quota,
+    /// Demasiadas peticiones en poco tiempo.
+    RateLimit,
+    /// Clave ausente, inválida o sin permiso.
+    Auth,
+    /// El modelo o el proveedor no pueden atender la petición.
+    Unavailable,
+    /// No se pudo llegar al proveedor.
+    Network,
+    /// El proveedor bloqueó el contenido.
+    Filtered,
+    /// La persona detuvo la respuesta.
+    Aborted,
+    Unknown,
+}
+
+impl ErrorKind {
+    /// Clasifica por el tipo que informa OpenCode y, si no lo reconoce, por el
+    /// código HTTP del proveedor.
+    fn classify(kind: &str, status: Option<u64>) -> Self {
+        match kind {
+            "aborted" => Self::Aborted,
+            "provider.free-limit"
+            | "provider.go-limit"
+            | "provider.chatgpt-limit"
+            | "provider.budget-limit"
+            | "provider.model-budget-limit"
+            | "provider.quota" => Self::Quota,
+            "provider.rate-limit" => Self::RateLimit,
+            "provider.auth" => Self::Auth,
+            "provider.no-route" | "provider.unsupported-operation" | "provider.internal" => {
+                Self::Unavailable
+            }
+            "provider.transport" | "provider.timeout" => Self::Network,
+            "provider.content-filter" => Self::Filtered,
+            _ => match status {
+                Some(401 | 403) => Self::Auth,
+                Some(429) => Self::RateLimit,
+                Some(500..=599) => Self::Unavailable,
+                _ => Self::Unknown,
+            },
+        }
+    }
+
+    fn id(self) -> &'static str {
+        match self {
+            Self::Quota => "quota",
+            Self::RateLimit => "rate_limit",
+            Self::Auth => "auth",
+            Self::Unavailable => "unavailable",
+            Self::Network => "network",
+            Self::Filtered => "filtered",
+            Self::Aborted => "aborted",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    /// Qué pasó y qué puede hacer la persona.
+    fn message(self) -> &'static str {
+        match self {
+            Self::Quota => "Se agotó el cupo de este modelo. Cambia de modelo o conecta un proveedor con tu propia clave.",
+            Self::RateLimit => "El proveedor está limitando las peticiones. Espera un momento y vuelve a intentar.",
+            Self::Auth => "El proveedor rechazó la clave. Revísala en «Proveedores y claves».",
+            Self::Unavailable => "El modelo no está disponible en este momento. Prueba con otro.",
+            Self::Network => "No se pudo conectar con el proveedor. Revisa tu conexión y vuelve a intentar.",
+            Self::Filtered => "El proveedor bloqueó la respuesta por su filtro de contenido.",
+            Self::Aborted => "Respuesta detenida.",
+            Self::Unknown => "El modelo devolvió un error.",
+        }
+    }
+}
+
+/// Convierte el error de OpenCode en el de OpenChat:
+/// `{ kind, message, detail?, retryAfterMs? }`. `detail` conserva el texto
+/// original del proveedor, para diagnóstico.
+fn own_error(error: &Value) -> Value {
+    let kind = ErrorKind::classify(
+        error.get("type").and_then(Value::as_str).unwrap_or(""),
+        error.get("status").and_then(Value::as_u64),
+    );
+    let mut own = json!({ "kind": kind.id(), "message": kind.message() });
+    if let Some(detail) = error.get("message").and_then(Value::as_str).filter(|d| !d.is_empty()) {
+        own["detail"] = json!(detail);
+    }
+    if let Some(wait) = error.get("retryAfterMs").and_then(Value::as_u64).filter(|w| *w > 0) {
+        own["retryAfterMs"] = json!(wait);
+    }
+    own
+}
+
+/// Reemplaza el error de un mensaje, si lo tiene, por el de OpenChat.
+fn with_own_error(mut message: Value) -> Value {
+    if let Some(error) = message.get_mut("error").filter(|e| e.is_object()) {
+        *error = own_error(error);
+    }
+    message
 }
 
 /// Los identificadores llegan de la vista y se insertan en rutas: se validan
@@ -494,7 +597,7 @@ fn free_port() -> Result<u16, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{checked_id, drain_events, is_relevant};
+    use super::{checked_id, drain_events, is_relevant, own_error, with_own_error, ErrorKind};
     use serde_json::json;
 
     #[test]
@@ -504,6 +607,47 @@ mod tests {
         assert!(checked_id("ses_1/../../shell", "ses_").is_err());
         assert!(checked_id("ses_1?x=1", "ses_").is_err());
         assert!(checked_id("msg_123", "ses_").is_err());
+    }
+
+    #[test]
+    fn classifies_engine_errors() {
+        assert_eq!(ErrorKind::classify("provider.free-limit", Some(429)), ErrorKind::Quota);
+        assert_eq!(ErrorKind::classify("provider.rate-limit", Some(429)), ErrorKind::RateLimit);
+        assert_eq!(ErrorKind::classify("provider.auth", Some(401)), ErrorKind::Auth);
+        assert_eq!(ErrorKind::classify("provider.timeout", None), ErrorKind::Network);
+        assert_eq!(ErrorKind::classify("provider.no-route", None), ErrorKind::Unavailable);
+        assert_eq!(ErrorKind::classify("aborted", None), ErrorKind::Aborted);
+        // Tipo desconocido: decide el código HTTP.
+        assert_eq!(ErrorKind::classify("provider.unknown", Some(403)), ErrorKind::Auth);
+        assert_eq!(ErrorKind::classify("provider.unknown", Some(503)), ErrorKind::Unavailable);
+        assert_eq!(ErrorKind::classify("provider.unknown", None), ErrorKind::Unknown);
+        assert_eq!(ErrorKind::classify("", None), ErrorKind::Unknown);
+    }
+
+    #[test]
+    fn translates_a_real_free_limit_error() {
+        // Forma capturada de OpenCode 2.3.2.
+        let own = own_error(&json!({
+            "type": "provider.free-limit",
+            "message": "Free usage limit reached.",
+            "status": 429,
+            "response": { "body": "{}" },
+            "retryAfterMs": 13259000,
+        }));
+        assert_eq!(own["kind"], "quota");
+        assert_eq!(own["detail"], "Free usage limit reached.");
+        assert_eq!(own["retryAfterMs"], 13259000);
+        assert!(own.get("response").is_none());
+        assert!(own["message"].as_str().unwrap().contains("cupo"));
+    }
+
+    #[test]
+    fn leaves_messages_without_error_untouched() {
+        let message = json!({ "type": "assistant", "content": [], "error": null });
+        assert_eq!(with_own_error(message.clone()), message);
+        let failed = with_own_error(json!({ "type": "assistant", "error": { "type": "aborted" } }));
+        assert_eq!(failed["error"]["kind"], "aborted");
+        assert!(failed["error"].get("detail").is_none());
     }
 
     #[test]

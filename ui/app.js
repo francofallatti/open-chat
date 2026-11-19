@@ -258,10 +258,17 @@ async function reloadMessages(jumpToEnd = false) {
   }
 }
 
+// `error` llega ya traducido por el motor: { kind, message, detail?, retryAfterMs? }.
 function errorBlock(error) {
   const box = node("div", "msg-error", error?.message || "El modelo devolvió un error.");
+  box.dataset.kind = error?.kind || "unknown";
   if (Number.isFinite(error?.retryAfterMs) && error.retryAfterMs > 0) {
     box.append(node("small", "", `Vuelve a estar disponible en unos ${formatWait(error.retryAfterMs)}.`));
+  }
+  if (error?.detail) {
+    const detail = node("details", "error-detail");
+    detail.append(node("summary", "", "Detalle del proveedor"), node("div", "", error.detail));
+    box.append(detail);
   }
   return box;
 }
@@ -312,7 +319,7 @@ async function assistantNode(message) {
       box.append(node("span", "tool-chip", `Herramienta ${part.name}${blocked ? " · no permitida" : ""}`));
     }
   }
-  if (message.error && message.error.type !== "aborted") box.append(errorBlock(message.error));
+  if (message.error && message.error.kind !== "aborted") box.append(errorBlock(message.error));
 
   if (texts.length) {
     const actions = node("div", "msg-actions");
