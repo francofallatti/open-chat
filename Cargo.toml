@@ -2,6 +2,7 @@
 name = "openchat"
 version = "0.1.0"
 description = "Panel de chat de escritorio para modelos abiertos, sobre el motor de OpenCode"
+license = "MIT"
 edition = "2021"
 
 [build-dependencies]

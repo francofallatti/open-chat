@@ -57,4 +57,4 @@ Leer fuera de la carpeta de trabajo sigue denegado. Los modelos usados con clave
 - Tiene que poder usarse sin pagar: niveles gratuitos de los proveedores y claves propias.
 - La instalación del motor es parte del producto, no un requisito previo (fase 5).
 - Las claves nunca se guardan en OpenChat ni salen de la máquina.
-- Falta elegir la licencia.
+- Licencia MIT.

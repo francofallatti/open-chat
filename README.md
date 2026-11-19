@@ -37,3 +37,7 @@ Decisiones a tener en cuenta:
 - **Chats separados.** Las sesiones viven en `%APPDATA%\dev.openchat.desktop\workspace`; no se mezclan con tus proyectos de OpenCode, aunque comparten su base de datos.
 - **Claves.** "Proveedores y claves" guarda la clave en el almacén de credenciales de OpenCode. OpenChat no la conserva.
 - **Registro del motor:** `%APPDATA%\dev.openchat.desktop\server.log`.
+
+## Licencia
+
+[MIT](LICENSE).
