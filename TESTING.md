@@ -98,6 +98,19 @@ Cuando uno falla, el mensaje dice el tipo de error (`quota`, `rate_limit`, `netw
 - Un defecto arreglado llega con el caso que lo reproduce.
 - Un cambio pasa a `main` solo con la suite completa en verde sobre su rama.
 
+## Con Claude Code
+
+El repo trae dos skills en `.claude/skills/`:
+
+| Comando | Qué hace | Cuándo |
+| --- | --- | --- |
+| `/qa [rama]` | Compila, corre las pruebas unitarias y toda la suite, y da un veredicto | Antes de unir una rama a `main` |
+| `/qa rapido` | Lo mismo, sin los casos que llaman a un modelo. No da veredicto | Mientras se desarrolla |
+| `/qa CHAT-002` o `/qa SES` | Corre solo ese caso o esa área. No da veredicto | Para revisar algo puntual |
+| `/qa-cases [rama]` | Compara los cambios de la rama con la suite, escribe los casos que faltan y corre solo esos | Al terminar una función o un arreglo |
+
+`/qa` informa y no toca el código. `/qa-cases` escribe casos. Están separadas para que quien aprueba no sea quien acomoda las pruebas.
+
 ## Pendientes de automatizar
 
 Casos que hoy se comprueban a mano:

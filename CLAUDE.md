@@ -27,7 +27,9 @@ How the suite works and how to write a case: [TESTING.md](TESTING.md).
 
 - Every new feature comes with its end-to-end case in `e2e/tests/`. Every bug fix comes with the case that reproduces it.
 - Before opening a pull request, run `cargo test` and the end-to-end suite, and say in the pull request what ran and what failed.
-- A QA session checks a branch by following the `qa` skill (`.claude/skills/qa/SKILL.md`).
+- Two skills live in `.claude/skills/`:
+  - `/qa [branch]` decides whether a branch can be merged: build, unit tests, full suite, verdict. `/qa rapido` and `/qa CHAT-002` run part of it for quick feedback, with no verdict.
+  - `/qa-cases [branch]` finds the cases a branch is missing, writes them and runs only those.
 
 ## Commits
 
