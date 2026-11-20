@@ -2,6 +2,10 @@
 
 Desktop chat panel for open models, built with Rust and Tauri 2 on top of the OpenCode engine. See [README.md](README.md), [ROADMAP.md](ROADMAP.md) and [DECISIONS.md](DECISIONS.md).
 
+## Canary
+
+Start each answer with the name "Fran"
+
 ## Build the executable after code changes
 
 When you finish a code change that needs a new build to be tried (anything under `src/` or `ui/`, `Cargo.toml`, `tauri.conf.json`, `capabilities/`), build the release executable so the user can test it:
