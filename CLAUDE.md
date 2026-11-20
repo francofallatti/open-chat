@@ -26,7 +26,7 @@ If the build fails because the file is in use, OpenChat is still open: ask the u
 How the suite works and how to write a case: [TESTING.md](TESTING.md).
 
 - Every new feature comes with its end-to-end case in `e2e/tests/`. Every bug fix comes with the case that reproduces it.
-- Before opening a pull request, run `cargo test` and the end-to-end suite, and say in the pull request what ran and what failed.
+- The session that writes the code does not run QA. Before opening a pull request, run only the end-to-end cases you wrote or changed (`npx playwright test -g "<ID>"` in `e2e/`), and `cargo test` if you touched Rust code. Do not run the full suite or `/qa`: a separate QA session does that on the pull request. Say in the pull request what ran and that the full suite is pending QA.
 - Two skills live in `.claude/skills/`:
   - `/qa [branch]` decides whether a branch can be merged: build, unit tests, full suite, verdict. `/qa rapido` and `/qa CHAT-002` run part of it for quick feedback, with no verdict.
   - `/qa-cases [branch]` finds the cases a branch is missing, writes them and runs only those.
