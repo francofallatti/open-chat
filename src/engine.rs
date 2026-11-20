@@ -32,6 +32,19 @@ const STARTUP_INTERVAL: Duration = Duration::from_millis(500);
 /// todavía cambia entre versiones menores, así que otra serie solo se avisa.
 pub const TESTED_SERIES: (u64, u64) = (2, 3);
 
+/// Agente con el que conversan los chats de OpenChat. Su `system` reemplaza las
+/// instrucciones de programación del agente por defecto de OpenCode (`build`).
+const AGENT_ID: &str = "openchat";
+const AGENT_SYSTEM: &str = "You are the assistant in OpenChat, a desktop chat app. You are having a conversation with a person: answer what they ask, clearly and directly.
+
+- Reply in the language the person writes in.
+- Responses are rendered as GitHub-flavored Markdown. Use it when it helps, and put code in fenced blocks with the language name.
+- Be concise by default and go deeper when the question needs it or the person asks.
+- If you are not sure about something, say so instead of guessing.
+- You cannot browse the web, run commands or see the person's files. If a request needs any of that, say so and help with what you can from the conversation.
+- The working directory described below is an internal, empty folder of the app. It is not the person's project: do not mention it or look for files in it.
+";
+
 pub struct Engine {
     client: reqwest::Client,
     base: String,
@@ -48,11 +61,13 @@ impl Engine {
     /// Con `engine_home`, OpenCode guarda ahí su base de datos, credenciales y
     /// configuración en lugar de usar el almacén compartido del usuario.
     pub async fn start(data_dir: &Path, engine_home: Option<&Path>) -> Result<Self, String> {
-        // Carpeta vacía y propia: las sesiones de OpenChat viven aquí, separadas de
-        // los proyectos que el usuario abre en OpenCode.
+        // Carpeta propia, sin archivos del usuario: las sesiones de OpenChat viven
+        // aquí, separadas de los proyectos que el usuario abre en OpenCode.
         let workspace = data_dir.join("workspace");
         fs::create_dir_all(&workspace)
             .map_err(|e| format!("No se pudo crear {}: {e}", workspace.display()))?;
+
+        write_agent_config(&workspace)?;
 
         let cli = locate_cli()?;
         let port = free_port()?;
@@ -300,12 +315,13 @@ impl Engine {
         let body = json!({
             "title": title,
             "model": engine_model_ref(model),
+            "agent": AGENT_ID,
             "location": { "directory": self.workspace.display().to_string() },
             // OpenChat es solo conversación: el agente no puede escribir archivos,
             // ejecutar comandos ni usar otras herramientas. Solo conserva la lectura
-            // dentro de su carpeta de trabajo (vacía): los modelos gratuitos de
-            // OpenCode rechazan con "Free usage limit reached" las peticiones que
-            // llegan sin la herramienta `read`.
+            // dentro de su carpeta de trabajo, que no tiene archivos del usuario: los
+            // modelos gratuitos de OpenCode rechazan con "Free usage limit reached"
+            // las peticiones que llegan sin la herramienta `read`.
             "permissions": [
                 { "action": "*", "resource": "*", "effect": "deny" },
                 {
@@ -623,6 +639,24 @@ fn drain_events(buffer: &mut Vec<u8>) -> Vec<Value> {
         }
     }
     events
+}
+
+/// Define el agente de conversación en la configuración de la carpeta de trabajo.
+/// OpenCode la lee como configuración de proyecto, así que vale solo para los
+/// chats de OpenChat y no toca la configuración global del usuario.
+fn write_agent_config(workspace: &Path) -> Result<(), String> {
+    let config = json!({
+        "agents": {
+            AGENT_ID: {
+                "description": "Conversación de OpenChat",
+                "mode": "primary",
+                "system": AGENT_SYSTEM,
+            },
+        },
+    });
+    let path = workspace.join("opencode.json");
+    fs::write(&path, format!("{config:#}"))
+        .map_err(|e| format!("No se pudo escribir {}: {e}", path.display()))
 }
 
 /// CLI a usar, por prioridad: `OPENCHAT_OPENCODE_CLI`, el incluido en OpenCode

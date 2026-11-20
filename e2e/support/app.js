@@ -6,7 +6,8 @@
 
 import { test as base, chromium, expect } from "@playwright/test";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -56,14 +57,78 @@ async function removeDir(dir) {
   }
 }
 
+// Proveedor de modelos local, compatible con la API de OpenAI. Guarda lo que el
+// motor le envía y contesta siempre lo mismo: sirve para comprobar qué recibe el
+// modelo, sin red ni cupo.
+const FAKE_ANSWER = "Respuesta del modelo de prueba.";
+
+async function startFakeModel() {
+  const requests = [];
+  const server = createHttpServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try { requests.push(JSON.parse(body)); } catch { /* petición sin cuerpo JSON */ }
+      const chunk = (delta, finish = null) =>
+        `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 0, model: "fake", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(chunk({ role: "assistant", content: FAKE_ANSWER }));
+      res.write(chunk({}, "stop"));
+      res.end("data: [DONE]\n\n");
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  return {
+    /** Nombre con el que aparece en el selector de modelos. */
+    name: "Modelo de prueba",
+    answer: FAKE_ANSWER,
+    /** Cuerpos de las peticiones recibidas, en orden. */
+    requests,
+    engineConfig: {
+      providers: {
+        fake: {
+          name: "Prueba",
+          package: "@opencode/ai/providers/openai-compatible",
+          settings: { apiKey: "prueba", baseURL: `http://127.0.0.1:${server.address().port}/v1` },
+          models: {
+            fake: {
+              name: "Modelo de prueba",
+              capabilities: { tools: true, input: ["text"], output: ["text"] },
+              limit: { context: 100000, output: 4000 },
+            },
+          },
+        },
+      },
+    },
+    close: () => new Promise((resolve) => { server.close(resolve); server.closeAllConnections(); }),
+  };
+}
+
 export const test = base.extend({
-  page: async ({}, use, testInfo) => {
+  // Con `test.use({ useFakeModel: true })` el motor arranca con un modelo local,
+  // que el caso recibe como `fakeModel`.
+  useFakeModel: [false, { option: true }],
+
+  fakeModel: async ({ useFakeModel }, use) => {
+    if (!useFakeModel) return use(null);
+    const fake = await startFakeModel();
+    await use(fake);
+    await fake.close();
+  },
+
+  page: async ({ fakeModel }, use, testInfo) => {
     test.skip(process.platform !== "win32", "La suite maneja WebView2 y solo corre en Windows");
     if (!existsSync(exe)) {
       throw new Error(`No existe ${exe}. Compila con: cargo build --release --features custom-protocol`);
     }
 
     const dataDir = mkdtempSync(path.join(tmpdir(), "openchat-e2e-"));
+    if (fakeModel) {
+      // Configuración global del motor aislado (ver `engine_home` en src/engine.rs).
+      const configDir = path.join(dataDir, "app", "engine", "config", "opencode");
+      mkdirSync(configDir, { recursive: true });
+      writeFileSync(path.join(configDir, "opencode.json"), JSON.stringify(fakeModel.engineConfig));
+    }
     const port = await freePort();
     const child = spawn(exe, [], {
       stdio: "ignore",

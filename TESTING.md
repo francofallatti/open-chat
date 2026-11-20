@@ -81,6 +81,19 @@ Llevan la etiqueta `@modelo`. Usan un modelo gratuito real, así que dependen de
 
 Cuando uno falla, el mensaje dice el tipo de error (`quota`, `rate_limit`, `network`…). Eso separa un problema del proveedor de un defecto de OpenChat.
 
+### Casos con el modelo de prueba
+
+Para comprobar qué le llega al modelo, o para tener una respuesta fija sin red ni cupo, un caso puede pedir un modelo local:
+
+```js
+test.describe("con el modelo de prueba", () => {
+  test.use({ useFakeModel: true });
+
+  test("CHAT-004 …", async ({ page, fakeModel }) => {
+```
+
+El motor arranca con un proveedor que apunta a un servidor de la propia suite. Aparece en el selector como `fakeModel.name`, contesta siempre `fakeModel.answer` y deja en `fakeModel.requests` cada petición que recibió. Estos casos no llevan `@modelo`: corren también en `npm run test:rapido`.
+
 ## Escribir un caso
 
 1. Elegir el archivo del área. Si es un área nueva, crear el archivo y agregar su prefijo a la tabla de arriba.
@@ -90,7 +103,7 @@ Cuando uno falla, el mensaje dice el tipo de error (`quota`, `rate_limit`, `netw
 5. Buscar los elementos por `id` o por su nombre accesible, no por posición.
 6. Después de un `page.reload()`, llamar a `appReady(page)` antes de seguir: espera a que carguen el motor, los modelos y los chats.
 7. Si el caso necesita chats previos, usar `seedChat(page, "título")`: los crea sin llamar al modelo.
-8. Etiquetar con `{ tag: "@modelo" }` solo si de verdad hace falta una respuesta.
+8. Etiquetar con `{ tag: "@modelo" }` solo si de verdad hace falta la respuesta de un modelo real. Si alcanza con una respuesta fija, usar el modelo de prueba.
 
 ## Regla para los cambios
 

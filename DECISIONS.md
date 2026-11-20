@@ -75,3 +75,24 @@ Las pruebas de punta a punta manejan el ejecutable real en un entorno aislado (v
 - Los casos que llaman a un modelo dependen de la red y del cupo de un proveedor gratuito. Un fallo del proveedor deja el cambio sin verificar, no aprobado.
 
 **Cuándo revisarla.** Si hace falta juntar varios cambios antes de publicar, se agrega una rama `release`. Si los fallos del proveedor frenan seguido la puerta, se suma un proveedor simulado para los casos `@modelo`.
+
+## 6. Agente propio de conversación
+
+**Fecha:** 2026-11-20 · **Estado:** vigente, implementada
+
+**Decisión.** Los chats se crean con un agente propio, `openchat`, en lugar del agente por defecto de OpenCode (`build`). Al arrancar el motor, OpenChat escribe la definición del agente en `opencode.json` dentro de su carpeta de trabajo.
+
+**Motivo.** El agente `build` le dice al modelo que es un agente de programación dentro de OpenCode y le da reglas para trabajar con código. En un chat general eso sobra y confunde: el modelo se presenta como OpenCode y habla de archivos. Las instrucciones de un agente (`system`) reemplazan ese texto por completo.
+
+Se define en la carpeta de trabajo porque OpenCode la lee como configuración de proyecto: vale solo para los chats de OpenChat y no toca la configuración global de quien también usa OpenCode.
+
+**Comprobado contra OpenCode 2.3.2.**
+
+- El modelo recibe las instrucciones de `openchat` y ninguna de las de programación (caso `CHAT-004`).
+- Los modelos gratuitos siguen respondiendo: el filtro de la decisión 3 no depende de las instrucciones.
+
+**Límites.**
+
+- OpenCode agrega siempre, después de las instrucciones del agente, un bloque con el nombre del modelo, la fecha y datos del entorno (carpeta de trabajo, plataforma). No se puede quitar desde la configuración; las instrucciones le piden al modelo que ignore la carpeta.
+- Los chats creados antes de este cambio siguen con el agente `build`.
+- No se comprobó qué pasa con las instrucciones globales de quien también usa OpenCode (`instructions`, `AGENTS.md`): es posible que el motor las sume. El entorno aislado de las pruebas no tiene ninguna.
