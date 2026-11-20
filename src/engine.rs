@@ -16,7 +16,15 @@ use reqwest::Method;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
+use crate::chat::{
+    Chat, ChatError, EngineStatus, ErrorKind, Event, Message, Model, ModelCatalog, ModelRef, Part,
+    Provider, StreamKind,
+};
+
 const USER: &str = "opencode";
+/// Canales por los que la vista recibe los eventos y el estado del motor.
+const EVENT_CHANNEL: &str = "engine-event";
+const STATUS_CHANNEL: &str = "engine-status";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const STARTUP_ATTEMPTS: u32 = 80;
 const STARTUP_INTERVAL: Duration = Duration::from_millis(500);
@@ -191,10 +199,10 @@ impl Engine {
         loop {
             let outcome = self.stream_events(&app).await;
             if self.exit_status().is_some() || self.child.lock().map(|c| c.is_none()).unwrap_or(true) {
-                let _ = app.emit("oc-status", "stopped");
+                let _ = app.emit(STATUS_CHANNEL, EngineStatus::Stopped);
                 return;
             }
-            let _ = app.emit("oc-status", "reconnecting");
+            let _ = app.emit(STATUS_CHANNEL, EngineStatus::Reconnecting);
             if let Err(reason) = outcome {
                 eprintln!("flujo de eventos interrumpido: {reason}");
             }
@@ -213,15 +221,15 @@ impl Engine {
         if !response.status().is_success() {
             return Err(format!("HTTP {}", response.status().as_u16()));
         }
-        let _ = app.emit("oc-status", "connected");
+        let _ = app.emit(STATUS_CHANNEL, EngineStatus::Connected);
 
         let mut stream = response.bytes_stream();
         let mut buffer: Vec<u8> = Vec::new();
         while let Some(chunk) = stream.next().await {
             buffer.extend_from_slice(&chunk.map_err(|e| e.to_string())?);
-            for event in drain_events(&mut buffer) {
-                if is_relevant(&event) {
-                    let _ = app.emit("oc-event", event);
+            for raw in drain_events(&mut buffer) {
+                if let Some(event) = own_event(&raw) {
+                    let _ = app.emit(EVENT_CHANNEL, event);
                 }
             }
         }
@@ -230,10 +238,10 @@ impl Engine {
 }
 
 /// Operaciones de chat. Es la única parte del programa que conoce las rutas y
-/// los cuerpos de la API de OpenCode: el resto llama a estos métodos.
+/// los cuerpos de la API de OpenCode: recibe y devuelve tipos de `chat`.
 impl Engine {
     /// Modelos de chat disponibles, con el nombre de su proveedor, y el modelo por defecto.
-    pub async fn models(&self) -> Result<Value, String> {
+    pub async fn models(&self) -> Result<ModelCatalog, String> {
         let models = data(self.request(Method::GET, "/api/model", &[], None).await?);
         let providers = data(self.request(Method::GET, "/api/provider", &[], None).await?);
         let default = self
@@ -243,48 +251,42 @@ impl Engine {
             .unwrap_or(Value::Null);
 
         let provider_name = |id: &str| -> String {
-            providers
-                .as_array()
-                .into_iter()
-                .flatten()
-                .find(|p| p.get("id").and_then(Value::as_str) == Some(id))
-                .and_then(|p| p.get("name").and_then(Value::as_str))
+            list(&providers)
+                .find(|p| text(p, "id") == Some(id))
+                .and_then(|p| text(p, "name"))
                 .unwrap_or(id)
                 .to_owned()
         };
 
-        let models: Vec<Value> = models
-            .as_array()
-            .into_iter()
-            .flatten()
+        let models = list(&models)
             .filter(|m| m.get("enabled").and_then(Value::as_bool) != Some(false))
             .filter_map(|m| {
-                let id = m.get("id")?.as_str()?;
-                let provider = m.get("providerID")?.as_str()?;
-                Some(json!({
-                    "id": id,
-                    "providerID": provider,
-                    "providerName": provider_name(provider),
-                    "name": m.get("name").and_then(Value::as_str).unwrap_or(id),
-                }))
+                let id = text(m, "id")?;
+                let provider = text(m, "providerID")?;
+                Some(Model {
+                    id: id.to_owned(),
+                    provider: provider.to_owned(),
+                    provider_name: provider_name(provider),
+                    name: text(m, "name").unwrap_or(id).to_owned(),
+                })
             })
             .collect();
 
-        let default = model_ref(&default).unwrap_or(Value::Null);
-        Ok(json!({ "models": models, "default": default }))
+        Ok(ModelCatalog { models, default: own_model_ref(&default) })
     }
 
     /// Chats de OpenChat: solo las sesiones de su carpeta de trabajo.
-    pub async fn sessions(&self) -> Result<Value, String> {
+    pub async fn chats(&self) -> Result<Vec<Chat>, String> {
         let directory = self.workspace.display().to_string();
         let query = [("directory", directory.as_str()), ("limit", "200"), ("order", "desc")];
-        Ok(data(self.request(Method::GET, "/api/session", &query, None).await?))
+        let sessions = data(self.request(Method::GET, "/api/session", &query, None).await?);
+        Ok(list(&sessions).filter_map(own_chat).collect())
     }
 
-    pub async fn create_session(&self, title: &str, model: &Value) -> Result<Value, String> {
+    pub async fn create_chat(&self, title: &str, model: &ModelRef) -> Result<Chat, String> {
         let body = json!({
             "title": title,
-            "model": model_ref(model)?,
+            "model": engine_model_ref(model),
             "location": { "directory": self.workspace.display().to_string() },
             // OpenChat es solo conversación: el agente no puede escribir archivos,
             // ejecutar comandos ni usar otras herramientas. Solo conserva la lectura
@@ -300,23 +302,26 @@ impl Engine {
                 },
             ],
         });
-        Ok(data(self.request(Method::POST, "/api/session", &[], Some(body)).await?))
+        let session = data(self.request(Method::POST, "/api/session", &[], Some(body)).await?);
+        own_chat(&session).ok_or_else(|| "El motor creó el chat pero no devolvió su identificador".to_owned())
     }
 
-    pub async fn send_prompt(&self, session_id: &str, text: &str) -> Result<Value, String> {
-        let path = format!("/api/session/{}/prompt", checked_id(session_id, "ses_")?);
-        Ok(data(self.request(Method::POST, &path, &[], Some(json!({ "text": text }))).await?))
+    pub async fn send_prompt(&self, chat_id: &str, prompt: &str) -> Result<(), String> {
+        let path = format!("/api/session/{}/prompt", checked_id(chat_id, "ses_")?);
+        self.request(Method::POST, &path, &[], Some(json!({ "text": prompt })))
+            .await
+            .map(|_| ())
     }
 
-    /// Todos los mensajes de una sesión, del más antiguo al más nuevo.
-    pub async fn messages(&self, session_id: &str) -> Result<Value, String> {
+    /// Todos los mensajes de un chat, del más antiguo al más nuevo.
+    pub async fn messages(&self, chat_id: &str) -> Result<Vec<Message>, String> {
         const PAGE_SIZE: usize = 100;
         const MAX_PAGES: usize = 50;
 
-        let path = format!("/api/session/{}/message", checked_id(session_id, "ses_")?);
+        let path = format!("/api/session/{}/message", checked_id(chat_id, "ses_")?);
         let page_size = PAGE_SIZE.to_string();
 
-        let mut messages: Vec<Value> = Vec::new();
+        let mut raw: Vec<Value> = Vec::new();
         let mut cursor: Option<String> = None;
         for _ in 0..MAX_PAGES {
             let mut query = vec![("order", "asc"), ("limit", page_size.as_str())];
@@ -329,7 +334,7 @@ impl Engine {
                 _ => break,
             };
             let received = items.len();
-            messages.extend(items.into_iter().map(with_own_error));
+            raw.extend(items);
 
             cursor = page
                 .pointer("/cursor/next")
@@ -339,178 +344,230 @@ impl Engine {
                 break;
             }
         }
-        Ok(Value::Array(messages))
+        Ok(own_messages(&raw))
     }
 
-    pub async fn interrupt(&self, session_id: &str) -> Result<Value, String> {
-        let path = format!("/api/session/{}/interrupt", checked_id(session_id, "ses_")?);
-        self.request(Method::POST, &path, &[], None).await
+    pub async fn interrupt(&self, chat_id: &str) -> Result<(), String> {
+        let path = format!("/api/session/{}/interrupt", checked_id(chat_id, "ses_")?);
+        self.request(Method::POST, &path, &[], None).await.map(|_| ())
     }
 
-    pub async fn delete_session(&self, session_id: &str) -> Result<(), String> {
-        let path = format!("/api/session/{}", checked_id(session_id, "ses_")?);
+    pub async fn delete_chat(&self, chat_id: &str) -> Result<(), String> {
+        let path = format!("/api/session/{}", checked_id(chat_id, "ses_")?);
         self.request(Method::DELETE, &path, &[], None).await.map(|_| ())
     }
 
-    pub async fn rename_session(&self, session_id: &str, title: &str) -> Result<(), String> {
-        let path = format!("/api/session/{}", checked_id(session_id, "ses_")?);
+    pub async fn rename_chat(&self, chat_id: &str, title: &str) -> Result<(), String> {
+        let path = format!("/api/session/{}", checked_id(chat_id, "ses_")?);
         self.request(Method::PATCH, &path, &[], Some(json!({ "title": title })))
             .await
             .map(|_| ())
     }
 
-    pub async fn set_session_model(&self, session_id: &str, model: &Value) -> Result<(), String> {
-        let path = format!("/api/session/{}/model", checked_id(session_id, "ses_")?);
-        self.request(Method::POST, &path, &[], Some(json!({ "model": model_ref(model)? })))
+    pub async fn set_chat_model(&self, chat_id: &str, model: &ModelRef) -> Result<(), String> {
+        let path = format!("/api/session/{}/model", checked_id(chat_id, "ses_")?);
+        self.request(Method::POST, &path, &[], Some(json!({ "model": engine_model_ref(model) })))
             .await
             .map(|_| ())
     }
 
     /// Proveedores que se conectan con una clave de API, y si ya están conectados.
-    pub async fn integrations(&self) -> Result<Value, String> {
+    pub async fn providers(&self) -> Result<Vec<Provider>, String> {
         let all = data(self.request(Method::GET, "/api/integration", &[], None).await?);
-        let integrations: Vec<Value> = all
-            .as_array()
-            .into_iter()
-            .flatten()
+        let providers = list(&all)
             .filter_map(|integration| {
-                let id = integration.get("id")?.as_str()?;
-                let accepts_key = integration
-                    .get("methods")?
-                    .as_array()?
-                    .iter()
-                    .any(|m| m.get("type").and_then(Value::as_str) == Some("key"));
+                let id = text(integration, "id")?;
+                let accepts_key = list(integration.get("methods")?)
+                    .any(|m| text(m, "type") == Some("key"));
                 let connected = integration
                     .get("connections")
                     .and_then(Value::as_array)
                     .is_some_and(|c| !c.is_empty());
-                accepts_key.then(|| {
-                    json!({
-                        "id": id,
-                        "name": integration.get("name").and_then(Value::as_str).unwrap_or(id),
-                        "connected": connected,
-                    })
+                accepts_key.then(|| Provider {
+                    id: id.to_owned(),
+                    name: text(integration, "name").unwrap_or(id).to_owned(),
+                    connected,
                 })
             })
             .collect();
-        Ok(Value::Array(integrations))
+        Ok(providers)
     }
 
     /// Guarda una clave de API en el almacén de credenciales de OpenCode.
     /// OpenChat no la conserva ni la escribe en disco por su cuenta.
-    pub async fn connect_key(&self, integration_id: &str, key: &str) -> Result<(), String> {
+    pub async fn connect_key(&self, provider_id: &str, key: &str) -> Result<(), String> {
         let key = key.trim();
         if key.is_empty() {
             return Err("La clave está vacía".into());
         }
-        let path = format!("/api/integration/{}/connect/key", checked_id(integration_id, "")?);
+        let path = format!("/api/integration/{}/connect/key", checked_id(provider_id, "")?);
         self.request(Method::POST, &path, &[], Some(json!({ "key": key })))
             .await
             .map(|_| ())
     }
 }
 
-/// Categorías de error propias de OpenChat. La vista decide qué mostrar y qué
-/// acción ofrecer a partir de estas, sin conocer los códigos de OpenCode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ErrorKind {
-    /// Se agotó el cupo del modelo o del plan.
-    Quota,
-    /// Demasiadas peticiones en poco tiempo.
-    RateLimit,
-    /// Clave ausente, inválida o sin permiso.
-    Auth,
-    /// El modelo o el proveedor no pueden atender la petición.
-    Unavailable,
-    /// No se pudo llegar al proveedor.
-    Network,
-    /// El proveedor bloqueó el contenido.
-    Filtered,
-    /// La persona detuvo la respuesta.
-    Aborted,
-    Unknown,
+/* ---------- traducción de OpenCode a los tipos de OpenChat ---------- */
+
+fn text<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
+    value.get(key).and_then(Value::as_str)
 }
 
-impl ErrorKind {
-    /// Clasifica por el tipo que informa OpenCode y, si no lo reconoce, por el
-    /// código HTTP del proveedor.
-    fn classify(kind: &str, status: Option<u64>) -> Self {
-        match kind {
-            "aborted" => Self::Aborted,
-            "provider.free-limit"
-            | "provider.go-limit"
-            | "provider.chatgpt-limit"
-            | "provider.budget-limit"
-            | "provider.model-budget-limit"
-            | "provider.quota" => Self::Quota,
-            "provider.rate-limit" => Self::RateLimit,
-            "provider.auth" => Self::Auth,
-            "provider.no-route" | "provider.unsupported-operation" | "provider.internal" => {
-                Self::Unavailable
+fn list(value: &Value) -> impl Iterator<Item = &Value> {
+    value.as_array().into_iter().flatten()
+}
+
+fn own_model_ref(model: &Value) -> Option<ModelRef> {
+    Some(ModelRef {
+        id: text(model, "id")?.to_owned(),
+        provider: text(model, "providerID")?.to_owned(),
+    })
+}
+
+fn engine_model_ref(model: &ModelRef) -> Value {
+    json!({ "id": model.id, "providerID": model.provider })
+}
+
+fn own_chat(session: &Value) -> Option<Chat> {
+    Some(Chat {
+        id: text(session, "id")?.to_owned(),
+        title: text(session, "title").unwrap_or("").to_owned(),
+        updated_at: session.pointer("/time/updated").and_then(Value::as_u64).unwrap_or(0),
+        model: session.get("model").and_then(own_model_ref),
+    })
+}
+
+fn own_part(part: &Value) -> Option<Part> {
+    match text(part, "type")? {
+        "text" => Some(Part::Text { text: text(part, "text")?.to_owned() }),
+        "reasoning" => Some(Part::Reasoning { text: text(part, "text")?.to_owned() }),
+        "tool" => Some(Part::Tool {
+            name: text(part, "name").unwrap_or("").to_owned(),
+            failed: part.pointer("/state/status").and_then(Value::as_str) == Some("error"),
+        }),
+        _ => None,
+    }
+    .filter(|part| !matches!(part, Part::Text { text } | Part::Reasoning { text } if text.is_empty()))
+}
+
+/// Traduce el historial de una sesión. OpenCode intercala mensajes de control
+/// (`idle`, entre otros) que no son parte de la conversación.
+fn own_messages(raw: &[Value]) -> Vec<Message> {
+    let mut messages: Vec<Message> = Vec::new();
+    for message in raw {
+        let id = text(message, "id").unwrap_or("").to_owned();
+        let error = message.get("error").filter(|e| e.is_object()).map(own_error);
+        match text(message, "type") {
+            Some("user") => messages.push(Message::User {
+                id,
+                text: text(message, "text").unwrap_or("").to_owned(),
+            }),
+            Some("assistant") => messages.push(Message::Assistant {
+                id,
+                parts: list(message.get("content").unwrap_or(&Value::Null))
+                    .filter_map(own_part)
+                    .collect(),
+                model: message.get("model").and_then(own_model_ref),
+                error,
+            }),
+            // Cuando la respuesta falla antes de empezar (modelo inexistente,
+            // por ejemplo), el error solo viene en el mensaje `idle`. Si la
+            // respuesta ya lo trae, el `idle` lo repite y se descarta.
+            Some("idle") => {
+                let already_shown =
+                    matches!(messages.last(), Some(Message::Assistant { error: Some(_), .. }));
+                if let (Some(error), false) = (error, already_shown) {
+                    messages.push(Message::Assistant { id, parts: Vec::new(), model: None, error: Some(error) });
+                }
             }
-            "provider.transport" | "provider.timeout" => Self::Network,
-            "provider.content-filter" => Self::Filtered,
-            _ => match status {
-                Some(401 | 403) => Self::Auth,
-                Some(429) => Self::RateLimit,
-                Some(500..=599) => Self::Unavailable,
-                _ => Self::Unknown,
-            },
+            _ => {}
         }
     }
+    messages
+}
 
-    fn id(self) -> &'static str {
-        match self {
-            Self::Quota => "quota",
-            Self::RateLimit => "rate_limit",
-            Self::Auth => "auth",
-            Self::Unavailable => "unavailable",
-            Self::Network => "network",
-            Self::Filtered => "filtered",
-            Self::Aborted => "aborted",
-            Self::Unknown => "unknown",
+/// Clasifica por el tipo que informa OpenCode y, si no lo reconoce, por el
+/// código HTTP del proveedor.
+fn error_kind(kind: &str, status: Option<u64>) -> ErrorKind {
+    match kind {
+        "aborted" => ErrorKind::Aborted,
+        "provider.free-limit"
+        | "provider.go-limit"
+        | "provider.chatgpt-limit"
+        | "provider.budget-limit"
+        | "provider.model-budget-limit"
+        | "provider.quota" => ErrorKind::Quota,
+        "provider.rate-limit" => ErrorKind::RateLimit,
+        "provider.auth" => ErrorKind::Auth,
+        "provider.no-route" | "provider.unsupported-operation" | "provider.internal" => {
+            ErrorKind::Unavailable
         }
-    }
-
-    /// Qué pasó y qué puede hacer la persona.
-    fn message(self) -> &'static str {
-        match self {
-            Self::Quota => "Se agotó el cupo de este modelo. Cambia de modelo o conecta un proveedor con tu propia clave.",
-            Self::RateLimit => "El proveedor está limitando las peticiones. Espera un momento y vuelve a intentar.",
-            Self::Auth => "El proveedor rechazó la clave. Revísala en «Proveedores y claves».",
-            Self::Unavailable => "El modelo no está disponible en este momento. Prueba con otro.",
-            Self::Network => "No se pudo conectar con el proveedor. Revisa tu conexión y vuelve a intentar.",
-            Self::Filtered => "El proveedor bloqueó la respuesta por su filtro de contenido.",
-            Self::Aborted => "Respuesta detenida.",
-            Self::Unknown => "El modelo devolvió un error.",
-        }
+        "provider.transport" | "provider.timeout" => ErrorKind::Network,
+        "provider.content-filter" => ErrorKind::Filtered,
+        _ => match status {
+            Some(401 | 403) => ErrorKind::Auth,
+            Some(429) => ErrorKind::RateLimit,
+            Some(500..=599) => ErrorKind::Unavailable,
+            _ => ErrorKind::Unknown,
+        },
     }
 }
 
-/// Convierte el error de OpenCode en el de OpenChat:
-/// `{ kind, message, detail?, retryAfterMs? }`. `detail` conserva el texto
-/// original del proveedor, para diagnóstico.
-fn own_error(error: &Value) -> Value {
-    let kind = ErrorKind::classify(
-        error.get("type").and_then(Value::as_str).unwrap_or(""),
+fn own_error(error: &Value) -> ChatError {
+    let kind = error_kind(
+        text(error, "type").unwrap_or(""),
         error.get("status").and_then(Value::as_u64),
     );
-    let mut own = json!({ "kind": kind.id(), "message": kind.message() });
-    if let Some(detail) = error.get("message").and_then(Value::as_str).filter(|d| !d.is_empty()) {
-        own["detail"] = json!(detail);
+    ChatError {
+        kind,
+        message: kind.message().to_owned(),
+        detail: text(error, "message").filter(|d| !d.is_empty()).map(str::to_owned),
+        retry_after_ms: error.get("retryAfterMs").and_then(Value::as_u64).filter(|w| *w > 0),
     }
-    if let Some(wait) = error.get("retryAfterMs").and_then(Value::as_u64).filter(|w| *w > 0) {
-        own["retryAfterMs"] = json!(wait);
-    }
-    own
 }
 
-/// Reemplaza el error de un mensaje, si lo tiene, por el de OpenChat.
-fn with_own_error(mut message: Value) -> Value {
-    if let Some(error) = message.get_mut("error").filter(|e| e.is_object()) {
-        *error = own_error(error);
+/// Traduce un evento del flujo de OpenCode. Devuelve `None` para los que la
+/// vista no usa.
+fn own_event(raw: &Value) -> Option<Event> {
+    let kind = text(raw, "type")?;
+    if matches!(kind, "model.updated" | "provider.updated" | "integration.updated") {
+        return Some(Event::CatalogChanged);
     }
-    message
+    let data = raw.get("data")?;
+    let chat_id = text(data, "sessionID")?.to_owned();
+
+    let stream = |kind: StreamKind| -> Option<(String, u64, StreamKind)> {
+        Some((
+            text(data, "assistantMessageID")?.to_owned(),
+            data.get("ordinal").and_then(Value::as_u64).unwrap_or(0),
+            kind,
+        ))
+    };
+    let delta = |kind: StreamKind| -> Option<Event> {
+        let (message_id, index, kind) = stream(kind)?;
+        Some(Event::PartDelta { chat_id: chat_id.clone(), message_id, index, kind, delta: text(data, "delta")?.to_owned() })
+    };
+    let done = |kind: StreamKind| -> Option<Event> {
+        let (message_id, index, kind) = stream(kind)?;
+        Some(Event::PartDone { chat_id: chat_id.clone(), message_id, index, kind, text: text(data, "text")?.to_owned() })
+    };
+
+    match kind {
+        "session.renamed" => Some(Event::ChatRenamed {
+            title: text(data, "title").unwrap_or("").to_owned(),
+            chat_id,
+        }),
+        "session.deleted" => Some(Event::ChatDeleted { chat_id }),
+        "session.execution.started" => Some(Event::ResponseStarted { chat_id }),
+        "session.execution.succeeded" | "session.execution.failed" | "session.execution.interrupted" => {
+            Some(Event::ResponseEnded { chat_id })
+        }
+        "session.text.delta" => delta(StreamKind::Text),
+        "session.reasoning.delta" => delta(StreamKind::Reasoning),
+        "session.text.ended" => done(StreamKind::Text),
+        "session.reasoning.ended" => done(StreamKind::Reasoning),
+        _ => None,
+    }
 }
 
 /// Los identificadores llegan de la vista y se insertan en rutas: se validan
@@ -528,15 +585,6 @@ fn checked_id<'a>(value: &'a str, prefix: &str) -> Result<&'a str, String> {
 
 fn data(mut response: Value) -> Value {
     response.get_mut("data").map(Value::take).unwrap_or(Value::Null)
-}
-
-fn model_ref(model: &Value) -> Result<Value, String> {
-    let id = model.get("id").and_then(Value::as_str);
-    let provider = model.get("providerID").and_then(Value::as_str);
-    match (id, provider) {
-        (Some(id), Some(provider)) => Ok(json!({ "id": id, "providerID": provider })),
-        _ => Err("Falta elegir un modelo".into()),
-    }
 }
 
 /// Extrae del búfer los eventos SSE completos y deja el resto para la próxima lectura.
@@ -562,12 +610,6 @@ fn drain_events(buffer: &mut Vec<u8>) -> Vec<Value> {
         }
     }
     events
-}
-
-fn is_relevant(event: &Value) -> bool {
-    let Some(kind) = event.get("type").and_then(Value::as_str) else { return false };
-    kind.starts_with("session.")
-        || matches!(kind, "model.updated" | "provider.updated" | "integration.updated")
 }
 
 /// CLI a usar, por prioridad: `OPENCHAT_OPENCODE_CLI`, el incluido en OpenCode
@@ -613,9 +655,7 @@ fn free_port() -> Result<u16, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        checked_id, drain_events, is_relevant, own_error, series, with_own_error, ErrorKind,
-    };
+    use super::*;
     use serde_json::json;
 
     #[test]
@@ -638,22 +678,23 @@ mod tests {
 
     #[test]
     fn classifies_engine_errors() {
-        assert_eq!(ErrorKind::classify("provider.free-limit", Some(429)), ErrorKind::Quota);
-        assert_eq!(ErrorKind::classify("provider.rate-limit", Some(429)), ErrorKind::RateLimit);
-        assert_eq!(ErrorKind::classify("provider.auth", Some(401)), ErrorKind::Auth);
-        assert_eq!(ErrorKind::classify("provider.timeout", None), ErrorKind::Network);
-        assert_eq!(ErrorKind::classify("provider.no-route", None), ErrorKind::Unavailable);
-        assert_eq!(ErrorKind::classify("aborted", None), ErrorKind::Aborted);
+        assert_eq!(error_kind("provider.free-limit", Some(429)), ErrorKind::Quota);
+        assert_eq!(error_kind("provider.rate-limit", Some(429)), ErrorKind::RateLimit);
+        assert_eq!(error_kind("provider.auth", Some(401)), ErrorKind::Auth);
+        assert_eq!(error_kind("provider.timeout", None), ErrorKind::Network);
+        assert_eq!(error_kind("provider.no-route", None), ErrorKind::Unavailable);
+        assert_eq!(error_kind("aborted", None), ErrorKind::Aborted);
         // Tipo desconocido: decide el código HTTP.
-        assert_eq!(ErrorKind::classify("provider.unknown", Some(403)), ErrorKind::Auth);
-        assert_eq!(ErrorKind::classify("provider.unknown", Some(503)), ErrorKind::Unavailable);
-        assert_eq!(ErrorKind::classify("provider.unknown", None), ErrorKind::Unknown);
-        assert_eq!(ErrorKind::classify("", None), ErrorKind::Unknown);
+        assert_eq!(error_kind("provider.unknown", Some(403)), ErrorKind::Auth);
+        assert_eq!(error_kind("provider.unknown", Some(503)), ErrorKind::Unavailable);
+        assert_eq!(error_kind("provider.unknown", None), ErrorKind::Unknown);
+        assert_eq!(error_kind("", None), ErrorKind::Unknown);
     }
 
+    // Las formas de estas pruebas se capturaron de OpenCode 2.3.2.
+
     #[test]
-    fn translates_a_real_free_limit_error() {
-        // Forma capturada de OpenCode 2.3.2.
+    fn translates_a_free_limit_error() {
         let own = own_error(&json!({
             "type": "provider.free-limit",
             "message": "Free usage limit reached.",
@@ -661,20 +702,219 @@ mod tests {
             "response": { "body": "{}" },
             "retryAfterMs": 13259000,
         }));
-        assert_eq!(own["kind"], "quota");
-        assert_eq!(own["detail"], "Free usage limit reached.");
-        assert_eq!(own["retryAfterMs"], 13259000);
-        assert!(own.get("response").is_none());
-        assert!(own["message"].as_str().unwrap().contains("cupo"));
+        assert_eq!(own.kind, ErrorKind::Quota);
+        assert_eq!(own.detail.as_deref(), Some("Free usage limit reached."));
+        assert_eq!(own.retry_after_ms, Some(13259000));
+        assert_eq!(
+            serde_json::to_value(&own).unwrap(),
+            json!({
+                "kind": "quota",
+                "message": ErrorKind::Quota.message(),
+                "detail": "Free usage limit reached.",
+                "retryAfterMs": 13259000,
+            })
+        );
     }
 
     #[test]
-    fn leaves_messages_without_error_untouched() {
-        let message = json!({ "type": "assistant", "content": [], "error": null });
-        assert_eq!(with_own_error(message.clone()), message);
-        let failed = with_own_error(json!({ "type": "assistant", "error": { "type": "aborted" } }));
-        assert_eq!(failed["error"]["kind"], "aborted");
-        assert!(failed["error"].get("detail").is_none());
+    fn translates_a_chat() {
+        let chat = own_chat(&json!({
+            "id": "ses_e09cc0decffeGpOhFIyzSkhxRe",
+            "projectID": "97d60a5b",
+            "model": { "id": "deepseek-v4.1-flash-free", "providerID": "opencode", "variant": "default" },
+            "time": { "created": 1795131961887u64, "updated": 1795131994964u64 },
+            "title": "captura",
+        }))
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&chat).unwrap(),
+            json!({
+                "id": "ses_e09cc0decffeGpOhFIyzSkhxRe",
+                "title": "captura",
+                "updatedAt": 1795131994964u64,
+                "model": { "id": "deepseek-v4.1-flash-free", "provider": "opencode" },
+            })
+        );
+        assert!(own_chat(&json!({ "title": "sin id" })).is_none());
+    }
+
+    #[test]
+    fn translates_a_conversation_and_drops_control_messages() {
+        let messages = own_messages(&[
+            json!({ "id": "msg_1", "type": "user", "text": "hola" }),
+            json!({
+                "id": "msg_2", "type": "assistant", "agent": "build",
+                "model": { "id": "m", "providerID": "p", "variant": "default" },
+                "content": [
+                    { "type": "reasoning", "text": "pienso" },
+                    { "type": "tool", "id": "call_1", "name": "read", "executed": false,
+                      "state": { "status": "error", "error": { "type": "permission.rejected" } } },
+                    { "type": "text", "text": "" },
+                    { "type": "text", "text": "Hola." },
+                ],
+            }),
+            json!({ "id": "msg_3", "type": "idle", "outcome": "succeeded" }),
+        ]);
+        assert_eq!(
+            serde_json::to_value(&messages).unwrap(),
+            json!([
+                { "role": "user", "id": "msg_1", "text": "hola" },
+                {
+                    "role": "assistant", "id": "msg_2",
+                    "parts": [
+                        { "type": "reasoning", "text": "pienso" },
+                        { "type": "tool", "name": "read", "failed": true },
+                        { "type": "text", "text": "Hola." },
+                    ],
+                    "model": { "id": "m", "provider": "p" },
+                    "error": null,
+                },
+            ])
+        );
+    }
+
+    #[test]
+    fn shows_an_error_that_only_comes_in_the_idle_message() {
+        // El modelo no existe: no llega a haber mensaje del asistente.
+        let messages = own_messages(&[
+            json!({ "id": "msg_1", "type": "user", "text": "hola" }),
+            json!({ "id": "msg_2", "type": "idle", "outcome": "failed",
+                    "error": { "type": "provider.no-route", "message": "Model unavailable: google/x" } }),
+        ]);
+        assert_eq!(messages.len(), 2);
+        let Message::Assistant { parts, error: Some(error), .. } = &messages[1] else {
+            panic!("se esperaba una respuesta con error");
+        };
+        assert!(parts.is_empty());
+        assert_eq!(error.kind, ErrorKind::Unavailable);
+    }
+
+    #[test]
+    fn does_not_repeat_an_error_already_on_the_response() {
+        let error = json!({ "type": "provider.free-limit", "message": "x", "status": 429 });
+        let messages = own_messages(&[
+            json!({ "id": "msg_1", "type": "assistant", "content": [], "error": error }),
+            json!({ "id": "msg_2", "type": "idle", "outcome": "failed", "error": error }),
+        ]);
+        assert_eq!(messages.len(), 1);
+    }
+
+    #[test]
+    fn translates_stream_events() {
+        let delta = own_event(&json!({
+            "type": "session.text.delta",
+            "data": { "sessionID": "ses_1", "assistantMessageID": "msg_9", "ordinal": 2, "delta": "ho" },
+        }))
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&delta).unwrap(),
+            json!({ "type": "partDelta", "chatId": "ses_1", "messageId": "msg_9", "index": 2, "kind": "text", "delta": "ho" })
+        );
+
+        let done = own_event(&json!({
+            "type": "session.reasoning.ended",
+            "data": { "sessionID": "ses_1", "assistantMessageID": "msg_9", "ordinal": 0, "text": "listo" },
+        }))
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&done).unwrap(),
+            json!({ "type": "partDone", "chatId": "ses_1", "messageId": "msg_9", "index": 0, "kind": "reasoning", "text": "listo" })
+        );
+    }
+
+    #[test]
+    fn translates_chat_lifecycle_events() {
+        let event = |kind: &str, data: Value| own_event(&json!({ "type": kind, "data": data }));
+        let session = json!({ "sessionID": "ses_1" });
+
+        assert_eq!(event("model.updated", json!({})), Some(Event::CatalogChanged));
+        assert_eq!(
+            event("session.renamed", json!({ "sessionID": "ses_1", "title": "nuevo" })),
+            Some(Event::ChatRenamed { chat_id: "ses_1".into(), title: "nuevo".into() })
+        );
+        assert_eq!(event("session.deleted", session.clone()), Some(Event::ChatDeleted { chat_id: "ses_1".into() }));
+        assert_eq!(
+            event("session.execution.started", session.clone()),
+            Some(Event::ResponseStarted { chat_id: "ses_1".into() })
+        );
+        for ended in ["succeeded", "failed", "interrupted"] {
+            assert_eq!(
+                event(&format!("session.execution.{ended}"), session.clone()),
+                Some(Event::ResponseEnded { chat_id: "ses_1".into() })
+            );
+        }
+        // Eventos que la vista no usa.
+        assert_eq!(event("session.step.started", session.clone()), None);
+        assert_eq!(event("pty.created", json!({})), None);
+        assert_eq!(own_event(&json!({ "data": {} })), None);
+    }
+
+    /// Recorrido completo contra un OpenCode real: arranca el motor, crea un
+    /// chat, espera la respuesta y lo borra. Necesita OpenCode instalado, red y
+    /// un modelo que responda, así que no corre por defecto:
+    ///
+    /// ```text
+    /// cargo test -- --ignored real_engine
+    /// ```
+    ///
+    /// El modelo se elige con `OPENCHAT_TEST_MODEL=proveedor/modelo`.
+    #[test]
+    #[ignore = "necesita OpenCode instalado y acceso a un modelo"]
+    fn real_engine_answers_a_prompt() {
+        let wanted = std::env::var("OPENCHAT_TEST_MODEL")
+            .unwrap_or_else(|_| "opencode/deepseek-v4.1-flash-free".to_owned());
+        let (provider, id) = wanted.split_once('/').expect("formato proveedor/modelo");
+        let model = ModelRef { id: id.to_owned(), provider: provider.to_owned() };
+
+        let data_dir = std::env::temp_dir().join(format!("openchat-test-{}", uuid::Uuid::new_v4().simple()));
+        fs::create_dir_all(&data_dir).unwrap();
+
+        tauri::async_runtime::block_on(async {
+            let engine = Engine::start(&data_dir).await.expect("el motor no arrancó");
+            assert!(series(&engine.version).is_some(), "versión ilegible: {}", engine.version);
+
+            let catalog = engine.models().await.unwrap();
+            assert!(
+                catalog.models.iter().any(|m| m.id == model.id && m.provider == model.provider),
+                "el modelo {wanted} no está en el catálogo"
+            );
+            assert!(!engine.providers().await.unwrap().is_empty());
+
+            let chat = engine.create_chat("prueba de OpenChat", &model).await.unwrap();
+            assert_eq!(chat.model.as_ref(), Some(&model));
+            assert!(engine.chats().await.unwrap().iter().any(|c| c.id == chat.id));
+
+            engine.send_prompt(&chat.id, "Responde solo con la palabra: hola").await.unwrap();
+
+            let mut answer = None;
+            for _ in 0..60 {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let messages = engine.messages(&chat.id).await.unwrap();
+                answer = messages.iter().rev().find_map(|message| match message {
+                    Message::Assistant { error: Some(error), .. } => Some(Err(error.clone())),
+                    Message::Assistant { parts, .. } => parts.iter().find_map(|part| match part {
+                        Part::Text { text } => Some(Ok(text.clone())),
+                        _ => None,
+                    }),
+                    Message::User { .. } => None,
+                });
+                if answer.is_some() {
+                    break;
+                }
+            }
+
+            engine.rename_chat(&chat.id, "prueba renombrada").await.unwrap();
+            engine.delete_chat(&chat.id).await.unwrap();
+            assert!(!engine.chats().await.unwrap().iter().any(|c| c.id == chat.id));
+            engine.shutdown();
+
+            match answer {
+                Some(Ok(text)) => assert!(!text.trim().is_empty()),
+                Some(Err(error)) => panic!("el modelo devolvió un error: {error:?}"),
+                None => panic!("el modelo no respondió a tiempo"),
+            }
+        });
+        let _ = fs::remove_dir_all(&data_dir);
     }
 
     #[test]
@@ -699,13 +939,5 @@ mod tests {
         assert!(drain_events(&mut buffer).is_empty());
         buffer.extend_from_slice(tail);
         assert_eq!(drain_events(&mut buffer)[0]["data"]["delta"], "ñandú");
-    }
-
-    #[test]
-    fn filters_events_the_view_does_not_use() {
-        assert!(is_relevant(&json!({"type": "session.text.delta"})));
-        assert!(is_relevant(&json!({"type": "model.updated"})));
-        assert!(!is_relevant(&json!({"type": "pty.created"})));
-        assert!(!is_relevant(&json!({"data": {}})));
     }
 }

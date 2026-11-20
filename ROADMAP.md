@@ -16,7 +16,7 @@ Las fases van en orden. Cada una deja la aplicación usable. El porqué de las d
 Objetivo: que la interfaz no sepa que detrás hay OpenCode.
 
 - [x] Sacar de `src/main.rs` todas las rutas y cuerpos de la API de OpenCode y dejarlos en un módulo de motor (`src/engine.rs`).
-- [ ] Definir tipos propios (modelo, chat, mensaje, evento, error) que la vista consume, independientes del formato de OpenCode.
+- [x] Definir tipos propios (modelo, chat, mensaje, evento, error) que la vista consume, independientes del formato de OpenCode (`src/chat.rs`).
 - [x] Traducir los errores del motor a categorías propias: cupo agotado, límite de peticiones, clave inválida, modelo no disponible, red, filtro de contenido.
 - [x] Comprobar la versión del motor al arrancar y avisar si no es una versión probada.
 

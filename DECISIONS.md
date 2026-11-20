@@ -21,9 +21,9 @@ Registro de las decisiones grandes del proyecto y su motivo. Se agrega una entra
 
 ## 2. El motor queda detrás de una frontera
 
-**Fecha:** 2026-11-19 · **Estado:** vigente, pendiente de implementar (fase 1 de la hoja de ruta)
+**Fecha:** 2026-11-19 · **Estado:** vigente, implementada
 
-**Decisión.** La interfaz y los comandos usan tipos y errores propios. Todo lo que conoce el formato de OpenCode vive en un único módulo.
+**Decisión.** La interfaz y los comandos usan tipos y errores propios (`src/chat.rs`). Todo lo que conoce el formato de OpenCode vive en un único módulo (`src/engine.rs`).
 
 **Motivo.** Permite reemplazar el motor, o sumar uno que hable directo con los proveedores, sin reescribir la interfaz. También limita a un solo lugar el arreglo cuando OpenCode cambia su API.
 

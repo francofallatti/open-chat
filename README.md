@@ -20,13 +20,15 @@ Hacia dónde va el proyecto: [ROADMAP.md](ROADMAP.md). Por qué está hecho así
 cargo run                                          # desarrollo
 cargo build --release --features custom-protocol   # ejecutable: target\release\openchat.exe
 cargo test                                         # pruebas
+cargo test -- --ignored real_engine                # recorrido completo contra un OpenCode real
 ```
 
 ## Cómo funciona
 
 | Pieza | Archivo | Qué hace |
 | --- | --- | --- |
-| Motor | `src/engine.rs` | Lanza `opencode-cli serve` en un puerto libre de `127.0.0.1`, con una contraseña aleatoria que solo vive en memoria. Lee el flujo SSE `/api/event` y lo reenvía a la vista. Detiene el servidor al cerrar. |
+| Motor | `src/engine.rs` | Lanza `opencode-cli serve` en un puerto libre de `127.0.0.1`, con una contraseña aleatoria que solo vive en memoria. Lee el flujo SSE `/api/event` y lo reenvía a la vista. Traduce el formato de OpenCode a los tipos propios. Detiene el servidor al cerrar. |
+| Tipos | `src/chat.rs` | Modelos, chats, mensajes, eventos y errores tal como los ve la vista. No dependen de ningún motor. |
 | Comandos | `src/main.rs` | Comandos Tauri acotados: modelos, chats, mensajes, enviar, detener, proveedores. Solo llaman al motor; no conocen la API de OpenCode. La vista no tiene acceso libre a la API. |
 | Markdown | `src/markdown.rs` | Convierte la respuesta del modelo a HTML y la sanea (sin scripts ni imágenes remotas). |
 | Vista | `ui/` | HTML, CSS y JavaScript sin dependencias ni paso de compilación. |

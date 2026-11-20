@@ -20,7 +20,7 @@ const FEATURED_PROVIDERS = ["deepseek", "moonshotai", "openrouter", "groq", "zai
 const state = {
   ready: false,
   models: [],
-  model: null,            // { id, providerID }
+  model: null,            // { id, provider }
   sessions: [],
   sessionId: null,
   messages: [],
@@ -76,7 +76,7 @@ function formatWait(ms) {
 }
 
 function sameModel(a, b) {
-  return !!a && !!b && a.id === b.id && a.providerID === b.providerID;
+  return !!a && !!b && a.id === b.id && a.provider === b.provider;
 }
 
 function nearBottom() {
@@ -96,9 +96,11 @@ async function loadModels() {
 
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem(MODEL_KEY)); } catch { /* preferencia ilegible: se ignora */ }
+  // Preferencia guardada por una versión anterior, con el nombre de campo viejo.
+  if (saved?.providerID && !saved.provider) saved = { id: saved.id, provider: saved.providerID };
   const known = (m) => m && models.some((x) => sameModel(x, m));
   if (!known(state.model)) {
-    state.model = known(saved) ? saved : known(fallback) ? fallback : models[0] ? { id: models[0].id, providerID: models[0].providerID } : null;
+    state.model = known(saved) ? saved : known(fallback) ? fallback : models[0] ? { id: models[0].id, provider: models[0].provider } : null;
   }
   renderModelButton();
   if (!el.modelMenu.hidden) renderModelList();
@@ -130,7 +132,7 @@ function renderModelList() {
       option.type = "button";
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", String(sameModel(m, state.model)));
-      option.addEventListener("click", () => chooseModel({ id: m.id, providerID: m.providerID }));
+      option.addEventListener("click", () => chooseModel({ id: m.id, provider: m.provider }));
       el.modelList.append(option);
     }
   }
@@ -154,7 +156,7 @@ async function chooseModel(model) {
   el.input.focus();
   if (state.sessionId) {
     try {
-      await invoke("set_session_model", { sessionId: state.sessionId, model });
+      await invoke("set_chat_model", { chatId: state.sessionId, model });
       showNotice("");
     } catch (error) {
       showNotice(`No se pudo cambiar el modelo: ${errorText(error)}`);
@@ -165,7 +167,7 @@ async function chooseModel(model) {
 /* ---------- lista de chats ---------- */
 
 async function loadSessions() {
-  state.sessions = (await invoke("list_sessions")) || [];
+  state.sessions = (await invoke("list_chats")) || [];
   renderSessions();
 }
 
@@ -174,7 +176,7 @@ function sessionTitle(session) {
 }
 
 function renderSessions() {
-  const sorted = [...state.sessions].sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0));
+  const sorted = [...state.sessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   el.sessions.replaceChildren();
   if (!sorted.length) {
     el.sessions.append(node("div", "sessions-empty", "Aún no hay chats."));
@@ -204,7 +206,7 @@ function renderSessions() {
 async function removeSession(session) {
   if (!window.confirm(`¿Eliminar el chat "${sessionTitle(session)}"? No se puede deshacer.`)) return;
   try {
-    await invoke("delete_session", { sessionId: session.id });
+    await invoke("delete_chat", { chatId: session.id });
     state.sessions = state.sessions.filter((s) => s.id !== session.id);
     state.busy.delete(session.id);
     if (state.sessionId === session.id) newChat();
@@ -236,7 +238,7 @@ async function openSession(id) {
 
   const session = state.sessions.find((s) => s.id === id);
   if (session?.model && state.models.some((m) => sameModel(m, session.model))) {
-    state.model = { id: session.model.id, providerID: session.model.providerID };
+    state.model = { id: session.model.id, provider: session.model.provider };
     renderModelButton();
   }
   await reloadMessages(true);
@@ -249,7 +251,7 @@ async function reloadMessages(jumpToEnd = false) {
   const id = state.sessionId;
   if (!id) return;
   try {
-    const messages = await invoke("list_messages", { sessionId: id });
+    const messages = await invoke("list_messages", { chatId: id });
     if (state.sessionId !== id) return; // el usuario cambió de chat mientras cargaba
     state.messages = messages || [];
     await renderThread(jumpToEnd);
@@ -308,15 +310,14 @@ function modelName(ref) {
 async function assistantNode(message) {
   const box = node("div", "msg assistant");
   const texts = [];
-  for (const part of message.content || []) {
+  for (const part of message.parts || []) {
     if (part.type === "text" && part.text) {
       texts.push(part.text);
       box.append(await proseBlock(part.text));
     } else if (part.type === "reasoning" && part.text) {
       box.append(reasoningBlock(part.text, false));
     } else if (part.type === "tool") {
-      const blocked = part.state?.status === "error";
-      box.append(node("span", "tool-chip", `Herramienta ${part.name}${blocked ? " · no permitida" : ""}`));
+      box.append(node("span", "tool-chip", `Herramienta ${part.name}${part.failed ? " · no permitida" : ""}`));
     }
   }
   if (message.error && message.error.kind !== "aborted") box.append(errorBlock(message.error));
@@ -340,9 +341,9 @@ async function renderThread(jumpToEnd = false) {
   const stick = jumpToEnd || nearBottom();
   const nodes = [];
   for (const message of state.messages) {
-    if (message.type === "user") {
+    if (message.role === "user") {
       nodes.push(node("div", "msg user", message.text));
-    } else if (message.type === "assistant") {
+    } else if (message.role === "assistant") {
       const rendered = await assistantNode(message);
       if (rendered) nodes.push(rendered);
     }
@@ -377,9 +378,9 @@ function liveResponse(messageId) {
 }
 
 function livePart(live, type, ordinal) {
-  let part = live.parts.find((p) => p.type === type && p.ordinal === ordinal);
+  let part = live.parts.find((p) => p.type === type && p.index === ordinal);
   if (!part) {
-    part = { type, ordinal, text: "", node: null };
+    part = { type, index: ordinal, text: "", node: null };
     live.parts.push(part);
   }
   return part;
@@ -421,51 +422,45 @@ async function finishExecution(sessionId) {
   renderSessions();
 }
 
+// Los eventos llegan ya traducidos por el motor (ver `Event` en src/chat.rs).
 function handleEvent(event) {
-  const type = event.type;
-  const data = event.data || {};
-  const sessionId = data.sessionID;
-
-  if (type === "model.updated" || type === "provider.updated" || type === "integration.updated") {
+  if (event.type === "catalogChanged") {
     clearTimeout(handleEvent.modelsTimer);
     handleEvent.modelsTimer = setTimeout(() => loadModels().catch(() => {}), 400);
     return;
   }
-  if (!sessionId) return;
+  const sessionId = event.chatId;
   const session = state.sessions.find((s) => s.id === sessionId);
-  if (!session) return; // sesión ajena a OpenChat
+  if (!session) return; // chat ajeno a OpenChat
 
-  switch (type) {
-    case "session.renamed":
-      session.title = data.title;
+  switch (event.type) {
+    case "chatRenamed":
+      session.title = event.title;
       renderSessions();
       return;
-    case "session.deleted":
+    case "chatDeleted":
       state.sessions = state.sessions.filter((s) => s.id !== sessionId);
       if (state.sessionId === sessionId) newChat(); else renderSessions();
       return;
-    case "session.execution.started":
+    case "responseStarted":
       state.busy.add(sessionId);
-      session.time = { ...session.time, updated: Date.now() };
+      session.updatedAt = Date.now();
       renderSessions();
       if (sessionId === state.sessionId) updateSendState();
       return;
-    case "session.execution.succeeded":
-    case "session.execution.failed":
-    case "session.execution.interrupted":
+    case "responseEnded":
       finishExecution(sessionId);
       return;
   }
 
   if (sessionId !== state.sessionId) return;
-  if (type === "session.text.delta" || type === "session.reasoning.delta") {
-    const live = liveResponse(data.assistantMessageID);
-    const part = livePart(live, type === "session.text.delta" ? "text" : "reasoning", data.ordinal);
-    part.text += data.delta;
+  if (event.type === "partDelta") {
+    const live = liveResponse(event.messageId);
+    livePart(live, event.kind, event.index).text += event.delta;
     scheduleLivePaint(live);
-  } else if (type === "session.text.ended" || type === "session.reasoning.ended") {
-    const live = liveResponse(data.assistantMessageID);
-    livePart(live, type === "session.text.ended" ? "text" : "reasoning", data.ordinal).text = data.text;
+  } else if (event.type === "partDone") {
+    const live = liveResponse(event.messageId);
+    livePart(live, event.kind, event.index).text = event.text;
     scheduleLivePaint(live);
   }
 }
@@ -492,19 +487,19 @@ async function send() {
   try {
     if (!state.sessionId) {
       const title = text.replace(/\s+/g, " ").slice(0, 60);
-      const session = await invoke("create_session", { title, model: state.model });
+      const session = await invoke("create_chat", { title, model: state.model });
       state.sessions.unshift(session);
       state.sessionId = session.id;
     }
     const sessionId = state.sessionId;
     el.input.value = "";
     autoGrow();
-    state.messages.push({ type: "user", text });
+    state.messages.push({ role: "user", text });
     state.busy.add(sessionId);
     renderSessions();
     updateSendState();
     await renderThread(true);
-    await invoke("send_prompt", { sessionId, text });
+    await invoke("send_prompt", { chatId: sessionId, text });
   } catch (error) {
     state.busy.delete(state.sessionId);
     updateSendState();
@@ -518,7 +513,7 @@ async function send() {
 async function stop() {
   if (!state.sessionId) return;
   try {
-    await invoke("interrupt_session", { sessionId: state.sessionId });
+    await invoke("interrupt_chat", { chatId: state.sessionId });
   } catch (error) {
     showNotice(`No se pudo detener: ${errorText(error)}`);
   }
@@ -536,7 +531,7 @@ async function openProviders() {
 
 async function loadIntegrations() {
   try {
-    state.integrations = await invoke("list_integrations");
+    state.integrations = await invoke("list_providers");
     renderProviders();
   } catch (error) {
     el.providerList.replaceChildren(node("div", "provider-error", errorText(error)));
@@ -581,7 +576,7 @@ function renderProviders(failure) {
         event.preventDefault();
         save.disabled = true;
         try {
-          await invoke("connect_integration", { integrationId: provider.id, key: input.value });
+          await invoke("connect_provider", { providerId: provider.id, key: input.value });
           state.openProvider = null;
           await loadIntegrations();
           await loadModels();
@@ -655,8 +650,8 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-listen("oc-event", (event) => handleEvent(event.payload));
-listen("oc-status", (event) => {
+listen("engine-event", (event) => handleEvent(event.payload));
+listen("engine-status", (event) => {
   if (!state.ready) return;
   if (event.payload === "stopped") setStatus("error", "El motor se detuvo");
   else if (event.payload === "reconnecting") setStatus("", "Reconectando…");

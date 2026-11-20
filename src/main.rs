@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod chat;
 mod engine;
 mod markdown;
 
@@ -9,23 +10,24 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, RunEvent, State};
 use tokio::sync::OnceCell;
 
+use chat::{Chat, Message, ModelCatalog, ModelRef, Provider};
 use engine::Engine;
 
 #[derive(Default)]
 struct AppState {
-    backend: OnceCell<Arc<Engine>>,
+    engine: OnceCell<Arc<Engine>>,
 }
 
 /// Devuelve el motor, arrancándolo en el primer uso. Si el arranque falla, el
 /// siguiente intento vuelve a probar.
 async fn engine(app: &AppHandle, state: &State<'_, AppState>) -> Result<Arc<Engine>, String> {
     state
-        .backend
+        .engine
         .get_or_try_init(|| async {
             let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            let backend = Arc::new(Engine::start(&data_dir).await?);
-            tauri::async_runtime::spawn(backend.clone().pump_events(app.clone()));
-            Ok::<_, String>(backend)
+            let engine = Arc::new(Engine::start(&data_dir).await?);
+            tauri::async_runtime::spawn(engine.clone().pump_events(app.clone()));
+            Ok::<_, String>(engine)
         })
         .await
         .cloned()
@@ -44,95 +46,95 @@ async fn init(app: AppHandle, state: State<'_, AppState>) -> Result<Value, Strin
 }
 
 #[tauri::command]
-async fn list_models(app: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
+async fn list_models(app: AppHandle, state: State<'_, AppState>) -> Result<ModelCatalog, String> {
     engine(&app, &state).await?.models().await
 }
 
 #[tauri::command]
-async fn list_sessions(app: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
-    engine(&app, &state).await?.sessions().await
+async fn list_chats(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Chat>, String> {
+    engine(&app, &state).await?.chats().await
 }
 
 #[tauri::command]
-async fn create_session(
+async fn create_chat(
     app: AppHandle,
     state: State<'_, AppState>,
     title: String,
-    model: Value,
-) -> Result<Value, String> {
-    engine(&app, &state).await?.create_session(&title, &model).await
+    model: ModelRef,
+) -> Result<Chat, String> {
+    engine(&app, &state).await?.create_chat(&title, &model).await
 }
 
 #[tauri::command]
 async fn send_prompt(
     app: AppHandle,
     state: State<'_, AppState>,
-    session_id: String,
+    chat_id: String,
     text: String,
-) -> Result<Value, String> {
-    engine(&app, &state).await?.send_prompt(&session_id, &text).await
+) -> Result<(), String> {
+    engine(&app, &state).await?.send_prompt(&chat_id, &text).await
 }
 
 #[tauri::command]
 async fn list_messages(
     app: AppHandle,
     state: State<'_, AppState>,
-    session_id: String,
-) -> Result<Value, String> {
-    engine(&app, &state).await?.messages(&session_id).await
+    chat_id: String,
+) -> Result<Vec<Message>, String> {
+    engine(&app, &state).await?.messages(&chat_id).await
 }
 
 #[tauri::command]
-async fn interrupt_session(
+async fn interrupt_chat(
     app: AppHandle,
     state: State<'_, AppState>,
-    session_id: String,
-) -> Result<Value, String> {
-    engine(&app, &state).await?.interrupt(&session_id).await
-}
-
-#[tauri::command]
-async fn delete_session(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    session_id: String,
+    chat_id: String,
 ) -> Result<(), String> {
-    engine(&app, &state).await?.delete_session(&session_id).await
+    engine(&app, &state).await?.interrupt(&chat_id).await
 }
 
 #[tauri::command]
-async fn rename_session(
+async fn delete_chat(
     app: AppHandle,
     state: State<'_, AppState>,
-    session_id: String,
+    chat_id: String,
+) -> Result<(), String> {
+    engine(&app, &state).await?.delete_chat(&chat_id).await
+}
+
+#[tauri::command]
+async fn rename_chat(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    chat_id: String,
     title: String,
 ) -> Result<(), String> {
-    engine(&app, &state).await?.rename_session(&session_id, &title).await
+    engine(&app, &state).await?.rename_chat(&chat_id, &title).await
 }
 
 #[tauri::command]
-async fn set_session_model(
+async fn set_chat_model(
     app: AppHandle,
     state: State<'_, AppState>,
-    session_id: String,
-    model: Value,
+    chat_id: String,
+    model: ModelRef,
 ) -> Result<(), String> {
-    engine(&app, &state).await?.set_session_model(&session_id, &model).await
+    engine(&app, &state).await?.set_chat_model(&chat_id, &model).await
 }
 
 #[tauri::command]
-async fn list_integrations(app: AppHandle, state: State<'_, AppState>) -> Result<Value, String> {
-    engine(&app, &state).await?.integrations().await
+async fn list_providers(app: AppHandle, state: State<'_, AppState>) -> Result<Vec<Provider>, String> {
+    engine(&app, &state).await?.providers().await
 }
 
 #[tauri::command]
-async fn connect_integration(
+async fn connect_provider(
     app: AppHandle,
     state: State<'_, AppState>,
-    integration_id: String,
+    provider_id: String,
     key: String,
 ) -> Result<(), String> {
-    engine(&app, &state).await?.connect_key(&integration_id, &key).await
+    engine(&app, &state).await?.connect_key(&provider_id, &key).await
 }
 
 #[tauri::command]
@@ -155,16 +157,16 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             init,
             list_models,
-            list_sessions,
-            create_session,
+            list_chats,
+            create_chat,
             send_prompt,
             list_messages,
-            interrupt_session,
-            delete_session,
-            rename_session,
-            set_session_model,
-            list_integrations,
-            connect_integration,
+            interrupt_chat,
+            delete_chat,
+            rename_chat,
+            set_chat_model,
+            list_providers,
+            connect_provider,
             render_markdown,
             open_external,
         ])
@@ -172,8 +174,8 @@ fn main() {
         .expect("no se pudo iniciar OpenChat")
         .run(|app, event| {
             if let RunEvent::Exit = event {
-                if let Some(backend) = app.state::<AppState>().backend.get() {
-                    backend.shutdown();
+                if let Some(engine) = app.state::<AppState>().engine.get() {
+                    engine.shutdown();
                 }
             }
         });
