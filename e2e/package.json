@@ -1,0 +1,14 @@
+{
+  "name": "openchat-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas de punta a punta de OpenChat sobre el ejecutable real",
+  "scripts": {
+    "test": "playwright test",
+    "test:rapido": "playwright test --grep-invert @modelo",
+    "casos": "playwright test --list"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0"
+  }
+}
