@@ -122,6 +122,8 @@ El repo trae dos skills en `.claude/skills/`:
 | `/qa CHAT-002` o `/qa SES` | Corre solo ese caso o esa área. No da veredicto | Para revisar algo puntual |
 | `/qa-cases [rama]` | Compara los cambios de la rama con la suite, escribe los casos que faltan y corre solo esos | Al terminar una función o un arreglo |
 
+La sesión que escribe el código no corre `/qa` ni la suite completa: corre solo los casos que escribió o cambió y abre el pull request. La puerta la corre otra sesión, sobre ese pull request.
+
 `/qa` informa y no toca el código. `/qa-cases` escribe casos. Están separadas para que quien aprueba no sea quien acomoda las pruebas.
 
 ## Pendientes de automatizar
