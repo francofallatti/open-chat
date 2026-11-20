@@ -51,3 +51,29 @@ test("CHAT-003 Mayús+Enter agrega un salto de línea y no envía", async ({ pag
   await expect(page.locator("#thread .msg")).toHaveCount(0);
   await expect(page.locator("#sessions .session")).toHaveCount(0);
 });
+
+test.describe("con el modelo de prueba", () => {
+  test.use({ useFakeModel: true });
+
+  test("CHAT-004 el modelo recibe instrucciones de conversación y no las de programación del motor", async ({ page, fakeModel }) => {
+    await page.locator("#model-btn").click();
+    await page.locator("#model-search").fill(fakeModel.name);
+    await page.locator("#model-list .model-option").first().click();
+    await expect(page.locator("#model-label")).toHaveText(fakeModel.name);
+
+    await page.locator("#input").fill("hola, ¿quién sos?");
+    await page.locator("#input").press("Enter");
+    await expect(page.locator("#thread .msg.assistant .prose")).toHaveText(fakeModel.answer, { timeout: 30_000 });
+    await expect(page.locator("#thread .msg-error")).toHaveCount(0);
+
+    // La petición del chat es la que termina con el mensaje de la persona.
+    const request = fakeModel.requests.find((r) => JSON.stringify(r.messages.at(-1)).includes("hola, ¿quién sos?"));
+    expect(request, "el modelo de prueba no recibió el mensaje").toBeTruthy();
+    const system = request.messages.filter((m) => m.role === "system").map((m) => JSON.stringify(m.content)).join("\n");
+    expect(system).toContain("OpenChat");
+    expect(system).not.toContain("coding agent");
+    expect(system).not.toContain("Working in codebases");
+    // Solo conversación: la única herramienta es la lectura que exigen los modelos gratuitos.
+    expect((request.tools ?? []).map((t) => t.function.name)).toEqual(["read"]);
+  });
+});
