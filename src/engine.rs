@@ -44,7 +44,10 @@ pub struct Engine {
 
 impl Engine {
     /// Arranca el servidor y espera a que responda.
-    pub async fn start(data_dir: &Path) -> Result<Self, String> {
+    ///
+    /// Con `engine_home`, OpenCode guarda ahí su base de datos, credenciales y
+    /// configuración en lugar de usar el almacén compartido del usuario.
+    pub async fn start(data_dir: &Path, engine_home: Option<&Path>) -> Result<Self, String> {
         // Carpeta vacía y propia: las sesiones de OpenChat viven aquí, separadas de
         // los proyectos que el usuario abre en OpenCode.
         let workspace = data_dir.join("workspace");
@@ -72,6 +75,16 @@ impl Engine {
             .stdin(Stdio::null())
             .stdout(log)
             .stderr(log_err);
+        if let Some(home) = engine_home {
+            for (var, folder) in [
+                ("XDG_DATA_HOME", "data"),
+                ("XDG_CONFIG_HOME", "config"),
+                ("XDG_STATE_HOME", "state"),
+                ("XDG_CACHE_HOME", "cache"),
+            ] {
+                command.env(var, home.join(folder));
+            }
+        }
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -870,7 +883,7 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
 
         tauri::async_runtime::block_on(async {
-            let engine = Engine::start(&data_dir).await.expect("el motor no arrancó");
+            let engine = Engine::start(&data_dir, None).await.expect("el motor no arrancó");
             assert!(series(&engine.version).is_some(), "versión ilegible: {}", engine.version);
 
             let catalog = engine.models().await.unwrap();
