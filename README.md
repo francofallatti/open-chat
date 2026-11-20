@@ -23,6 +23,8 @@ cargo test                                         # pruebas
 cargo test -- --ignored real_engine                # recorrido completo contra un OpenCode real
 ```
 
+Las pruebas de punta a punta, que manejan la app real, se explican en [TESTING.md](TESTING.md).
+
 ## Cómo funciona
 
 | Pieza | Archivo | Qué hace |

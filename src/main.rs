@@ -4,6 +4,7 @@ mod chat;
 mod engine;
 mod markdown;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -24,8 +25,19 @@ async fn engine(app: &AppHandle, state: &State<'_, AppState>) -> Result<Arc<Engi
     state
         .engine
         .get_or_try_init(|| async {
-            let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            let engine = Arc::new(Engine::start(&data_dir).await?);
+            // Con `OPENCHAT_DATA_DIR` todo vive en esa carpeta, incluidos la base de
+            // datos y las credenciales del motor: es el entorno aislado de las
+            // pruebas (ver TESTING.md). Sin ella, el motor usa su almacén compartido.
+            let isolated = std::env::var_os("OPENCHAT_DATA_DIR").filter(|dir| !dir.is_empty());
+            let (data_dir, engine_home) = match isolated {
+                Some(dir) => {
+                    let dir = PathBuf::from(dir);
+                    let home = dir.join("engine");
+                    (dir, Some(home))
+                }
+                None => (app.path().app_data_dir().map_err(|e| e.to_string())?, None),
+            };
+            let engine = Arc::new(Engine::start(&data_dir, engine_home.as_deref()).await?);
             tauri::async_runtime::spawn(engine.clone().pump_events(app.clone()));
             Ok::<_, String>(engine)
         })
