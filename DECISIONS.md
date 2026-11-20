@@ -58,3 +58,20 @@ Leer fuera de la carpeta de trabajo sigue denegado. Los modelos usados con clave
 - La instalación del motor es parte del producto, no un requisito previo (fase 5).
 - Las claves nunca se guardan en OpenChat ni salen de la máquina.
 - Licencia MIT.
+
+## 5. `main` es producción; todo cambio entra por una rama y pasa por la suite
+
+**Fecha:** 2026-11-20 · **Estado:** vigente
+
+**Decisión.** Nadie escribe directo en `main`. Cada cambio vive en una rama (`feat/...`, `fix/...`), abre un pull request y se une solo cuando la suite de punta a punta pasa completa sobre esa rama. Las versiones son etiquetas sobre `main`. No hay rama `development`.
+
+Las pruebas de punta a punta manejan el ejecutable real en un entorno aislado (ver [TESTING.md](TESTING.md)).
+
+**Motivo.** El proyecto lo trabajan una persona y sesiones de Claude Code en paralelo: una desarrolla y otra hace de QA. Lo que protege a `main` es la puerta de pruebas, no la cantidad de ramas. Una rama intermedia agregaría un paso de unión que no comprueba nada nuevo.
+
+**Costo.**
+
+- La suite solo corre en Windows, porque se conecta al WebView2.
+- Los casos que llaman a un modelo dependen de la red y del cupo de un proveedor gratuito. Un fallo del proveedor deja el cambio sin verificar, no aprobado.
+
+**Cuándo revisarla.** Si hace falta juntar varios cambios antes de publicar, se agrega una rama `release`. Si los fallos del proveedor frenan seguido la puerta, se suma un proveedor simulado para los casos `@modelo`.

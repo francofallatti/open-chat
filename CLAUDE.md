@@ -14,8 +14,22 @@ The result is `target\release\openchat.exe`. Tell the user it is ready and what 
 
 If the build fails because the file is in use, OpenChat is still open: ask the user to close it, then build again.
 
+## Branches and pull requests
+
+- `main` is production. Never commit or push to it directly. Releases are tags on `main`.
+- Work happens on a branch taken from `main`: `feat/...`, `fix/...`, `docs/...`, `chore/...`.
+- Commit and push to those branches without asking. Then open a pull request against `main`.
+- The user approves by merging. Only the user merges, and only when the test suite passed on that branch.
+
+## Tests
+
+How the suite works and how to write a case: [TESTING.md](TESTING.md).
+
+- Every new feature comes with its end-to-end case in `e2e/tests/`. Every bug fix comes with the case that reproduces it.
+- Before opening a pull request, run `cargo test` and the end-to-end suite, and say in the pull request what ran and what failed.
+- A QA session checks a branch by following the `qa` skill (`.claude/skills/qa/SKILL.md`).
+
 ## Commits
 
 - Written in English.
 - Start with the type of work in brackets: `[FEAT]`, `[FIX]`, `[REFACTOR]`, `[DOCS]`, `[CHORE]`, `[TEST]`. Example: `[FIX] Keep read permission so free models answer`.
-- The user reviews the work first. Commit and push only after they approve.
