@@ -118,6 +118,7 @@ function renderModelList() {
   el.modelList.replaceChildren();
   if (!matches.length) {
     el.modelList.append(node("div", "model-empty", state.models.length ? "Ningún modelo coincide." : "No hay modelos. Conecta un proveedor."));
+    setActiveOption(null);
     return;
   }
   const groups = new Map();
@@ -125,16 +126,60 @@ function renderModelList() {
     if (!groups.has(m.providerName)) groups.set(m.providerName, []);
     groups.get(m.providerName).push(m);
   }
+  let count = 0;
   for (const [provider, items] of groups) {
-    el.modelList.append(node("div", "model-group", provider));
+    const label = node("div", "model-group", provider);
+    label.id = `model-group-${count}`;
+    const group = node("div");
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-labelledby", label.id);
+    group.append(label);
     for (const m of items) {
-      const option = node("button", "model-option", m.name);
-      option.type = "button";
+      // El foco se queda en el buscador: las opciones no son botones y la activa
+      // se le indica al lector de pantalla con aria-activedescendant.
+      const option = node("div", "model-option", m.name);
+      option.id = `model-option-${count++}`;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", String(sameModel(m, state.model)));
       option.addEventListener("click", () => chooseModel({ id: m.id, provider: m.provider }));
-      el.modelList.append(option);
+      option.addEventListener("pointermove", () => setActiveOption(option, false));
+      group.append(option);
     }
+    el.modelList.append(group);
+  }
+  const options = modelOptions();
+  setActiveOption((term ? null : options.find((o) => o.getAttribute("aria-selected") === "true")) || options[0]);
+}
+
+function modelOptions() {
+  return [...el.modelList.querySelectorAll(".model-option")];
+}
+
+function setActiveOption(option, scroll = true) {
+  for (const other of modelOptions()) other.classList.toggle("active", other === option);
+  if (option) {
+    el.modelSearch.setAttribute("aria-activedescendant", option.id);
+    if (scroll) option.scrollIntoView({ block: "nearest" });
+  } else {
+    el.modelSearch.removeAttribute("aria-activedescendant");
+  }
+}
+
+function modelSearchKey(event) {
+  const options = modelOptions();
+  const index = options.findIndex((o) => o.classList.contains("active"));
+  const target = {
+    ArrowDown: options[Math.min(index + 1, options.length - 1)],
+    ArrowUp: options[Math.max(index - 1, 0)],
+    Home: options[0],
+    End: options[options.length - 1],
+  }[event.key];
+  if (target) {
+    event.preventDefault();
+    setActiveOption(target);
+  } else if (event.key === "Enter" && options[index]) {
+    event.preventDefault();
+    options[index].click();
   }
 }
 
@@ -633,6 +678,13 @@ $("providers-btn").addEventListener("click", openProviders);
 el.providerSearch.addEventListener("input", () => renderProviders());
 el.modelBtn.addEventListener("click", () => toggleModelMenu(el.modelMenu.hidden));
 el.modelSearch.addEventListener("input", renderModelList);
+el.modelSearch.addEventListener("keydown", modelSearchKey);
+// Un clic en la lista no le quita el foco al buscador.
+el.modelList.addEventListener("mousedown", (event) => event.preventDefault());
+// Si el foco sale del selector con Tab, el menú se cierra.
+el.modelMenu.parentElement.addEventListener("focusout", (event) => {
+  if (!el.modelMenu.hidden && event.relatedTarget && !event.relatedTarget.closest(".model-picker")) toggleModelMenu(false);
+});
 
 document.addEventListener("click", (event) => {
   if (!el.modelMenu.hidden && !event.target.closest(".model-picker")) toggleModelMenu(false);
@@ -643,7 +695,10 @@ document.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !el.modelMenu.hidden) toggleModelMenu(false);
+  if (event.key === "Escape" && !el.modelMenu.hidden) {
+    toggleModelMenu(false);
+    el.modelBtn.focus(); // el foco vuelve al botón que abrió el menú
+  }
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "o") {
     event.preventDefault();
     newChat();
