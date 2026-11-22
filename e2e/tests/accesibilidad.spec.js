@@ -32,3 +32,43 @@ for (const scheme of ["light", "dark"]) {
     expect(failing).toEqual([]);
   });
 }
+
+// Contraste entre el texto de ejemplo de un campo y el fondo que tiene detrás,
+// leídos del elemento en pantalla y no de los colores definidos.
+function placeholderContrast(field) {
+  const rgb = (color) => color.match(/[\d.]+/g).map(Number);
+  const luminance = ([r, g, b]) => {
+    const [x, y, z] = [r, g, b].map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * x + 0.7152 * y + 0.0722 * z;
+  };
+  // El fondo es el del primer antepasado que no sea transparente.
+  let background = null;
+  for (let node = field; node && !background; node = node.parentElement) {
+    const [r, g, b, alpha = 1] = rgb(getComputedStyle(node).backgroundColor);
+    if (alpha > 0) background = [r, g, b];
+  }
+  const text = rgb(getComputedStyle(field, "::placeholder").color);
+  const [light, dark] = [luminance(text), luminance(background)].sort((a, b) => b - a);
+  return (light + 0.05) / (dark + 0.05);
+}
+
+for (const scheme of ["light", "dark"]) {
+  test(`ACC-002 el texto de ejemplo de cada campo se lee sobre su fondo (tema ${scheme})`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme: scheme });
+    const ratio = (selector) => page.locator(selector).evaluate(placeholderContrast);
+
+    expect(await ratio("#input"), "cuadro de mensaje").toBeGreaterThanOrEqual(4.5);
+
+    await page.locator("#model-btn").click();
+    expect(await ratio("#model-search"), "buscador de modelos").toBeGreaterThanOrEqual(4.5);
+    await page.keyboard.press("Escape");
+
+    await page.locator("#providers-btn").click();
+    expect(await ratio("#provider-search"), "buscador de proveedores").toBeGreaterThanOrEqual(4.5);
+    await page.locator("#provider-list .provider .button").first().click();
+    expect(await ratio("#provider-list .provider-form input"), "campo de clave").toBeGreaterThanOrEqual(4.5);
+  });
+}

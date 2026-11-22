@@ -11,7 +11,7 @@ Primera revisión: 20 de noviembre de 2026, leyendo el código y calculando los 
 - [ ] **3. El cuadro de mensaje no muestra el foco** (R-32). `#input` tiene `outline: 0` sin un reemplazo visible.
 - [ ] **4. Selector de modelo con teclado** (R-32, R-39). Al cerrar con Escape el foco se pierde, las flechas no recorren la lista, y los roles `listbox` y `option` están puestos sobre botones.
 - [ ] **5. Ventana angosta** (R-03). Entre 720 y 760 px de ancho la barra lateral tapa el botón que la oculta y no se puede cerrar.
-- [ ] **13. Texto de ejemplo de los buscadores** (R-25). `#model-search` y `#provider-search` no usan `--text-3`: su texto de ejemplo queda con el gris por defecto del navegador (`#757575`), que da 4.37:1 en tema claro y 3.29:1 en tema oscuro; el mínimo es 4.5:1. Lo encontró QA en el pull request del 1, midiendo en la app. `ACC-001` no lo ve porque comprueba los colores definidos y no los elementos en pantalla.
+- [x] **13. Texto de ejemplo de los buscadores** (R-25). Caso: `ACC-002`. `#model-search` y `#provider-search` no usan `--text-3`: su texto de ejemplo queda con el gris por defecto del navegador (`#757575`), que da 4.37:1 en tema claro y 3.29:1 en tema oscuro; el mínimo es 4.5:1. Lo encontró QA en el pull request del 1, midiendo en la app. `ACC-001` no lo ve porque comprueba los colores definidos y no los elementos en pantalla.
 
 ## Prioridad alta: estados y avisos
 
