@@ -7,7 +7,7 @@ Primera revisión: 20 de noviembre de 2026, leyendo el código y calculando los 
 ## Prioridad alta: accesibilidad y función
 
 - [x] **1. Texto gris ilegible** (R-25). `--text-3` daba entre 2.78 y 3.23:1 en tema claro y hasta 3.21:1 en tema oscuro; el mínimo es 4.5:1. Afectaba a "Recientes", el estado del motor, "Aún no hay chats", la nota al pie, el nombre del modelo bajo cada respuesta y los textos de ejemplo de los campos. Caso: `ACC-001`.
-- [ ] **2. Bordes de campos casi invisibles** (R-25). Los buscadores, el campo de clave y los botones secundarios tienen bordes de 1.2 a 1.7:1 contra su fondo; el mínimo para el borde de un control es 3:1.
+- [x] **2. Bordes de campos casi invisibles** (R-25). Los buscadores, el campo de clave y los botones secundarios tenían bordes de 1.2 a 1.7:1 contra su fondo; el mínimo para el borde de un control es 3:1. El cuadro de mensaje tenía el mismo defecto (1.5:1) y se arregló junto. Caso: `ACC-003`.
 - [ ] **3. El cuadro de mensaje no muestra el foco** (R-32). `#input` tiene `outline: 0` sin un reemplazo visible.
 - [ ] **4. Selector de modelo con teclado** (R-32, R-39). Al cerrar con Escape el foco se pierde, las flechas no recorren la lista, y los roles `listbox` y `option` están puestos sobre botones.
 - [ ] **5. Ventana angosta** (R-03). Entre 720 y 760 px de ancho la barra lateral tapa el botón que la oculta y no se puede cerrar.
@@ -25,6 +25,7 @@ Primera revisión: 20 de noviembre de 2026, leyendo el código y calculando los 
 - [ ] **10. Se parece a la app de Claude** (R-30). La paleta crema y carbón usa los mismos tonos y el saludo en serif centrado es el mismo gesto. Falta decidir si se mantiene o se le da identidad propia.
 - [ ] **11. Falta `DESIGN.md`** (R-37). Sin dirección escrita, cada cambio visual es un borrador.
 - [ ] **12. Radios y títulos** (R-11, R-39). Hay nueve radios de borde distintos sin una escala, y no queda ningún `h1` cuando hay un chat abierto.
+- [ ] **14. Falta un control para elegir el tema** (R-21). La app sigue el tema de Windows y no deja cambiarlo desde adentro. Falta un control con tres opciones (claro, oscuro, seguir al sistema) que recuerde la elección. Lo pidió el usuario al revisar el pull request del 2.
 
 ## Notas
 

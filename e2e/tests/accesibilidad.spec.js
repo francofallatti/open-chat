@@ -72,3 +72,53 @@ for (const scheme of ["light", "dark"]) {
     expect(await ratio("#provider-list .provider-form input"), "campo de clave").toBeGreaterThanOrEqual(4.5);
   });
 }
+
+// Contraste del borde de un control contra su propio fondo y contra el fondo
+// que lo rodea, leídos del elemento en pantalla.
+function borderContrast(control) {
+  const rgb = (color) => color.match(/[\d.]+/g).map(Number);
+  const luminance = ([r, g, b]) => {
+    const [x, y, z] = [r, g, b].map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * x + 0.7152 * y + 0.0722 * z;
+  };
+  // El fondo es el del primer nodo, desde el dado hacia arriba, que no sea transparente.
+  const backgroundFrom = (start) => {
+    for (let node = start; node; node = node.parentElement) {
+      const [r, g, b, alpha = 1] = rgb(getComputedStyle(node).backgroundColor);
+      if (alpha > 0) return [r, g, b];
+    }
+    return [255, 255, 255];
+  };
+  const ratio = (a, b) => {
+    const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (light + 0.05) / (dark + 0.05);
+  };
+  const border = rgb(getComputedStyle(control).borderTopColor);
+  return Math.min(ratio(border, backgroundFrom(control)), ratio(border, backgroundFrom(control.parentElement)));
+}
+
+for (const scheme of ["light", "dark"]) {
+  test(`ACC-003 el borde de cada campo y botón secundario se distingue de su fondo (tema ${scheme})`, async ({ page }) => {
+    // Sin animaciones: el borde del cuadro de mensaje cambia de color con una
+    // transición y, medido a mitad de camino, da un valor que no es el final.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.emulateMedia({ colorScheme: scheme });
+    const ratio = (selector) => page.locator(selector).first().evaluate(borderContrast);
+
+    // 3:1 es el mínimo de WCAG AA para el borde de un control.
+    expect(await ratio("#composer"), "cuadro de mensaje").toBeGreaterThanOrEqual(3);
+
+    await page.locator("#model-btn").click();
+    expect(await ratio("#model-search"), "buscador de modelos").toBeGreaterThanOrEqual(3);
+    await page.keyboard.press("Escape");
+
+    await page.locator("#providers-btn").click();
+    expect(await ratio("#provider-search"), "buscador de proveedores").toBeGreaterThanOrEqual(3);
+    expect(await ratio("#provider-list .provider .button:not(.primary)"), "botón secundario").toBeGreaterThanOrEqual(3);
+    await page.locator("#provider-list .provider .button").first().click();
+    expect(await ratio("#provider-list .provider-form input"), "campo de clave").toBeGreaterThanOrEqual(3);
+  });
+}
