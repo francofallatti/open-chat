@@ -35,6 +35,17 @@ How the suite works and how to write a case: [TESTING.md](TESTING.md).
   - `/qa [branch]` decides whether a branch can be merged: build, unit tests, full suite, verdict. `/qa rapido` and `/qa CHAT-002` run part of it for quick feedback, with no verdict.
   - `/qa-cases [branch]` finds the cases a branch is missing, writes them and runs only those.
 
+## Interface work
+
+Three skills in `.claude/skills/` filter generic interface output: `antislop` (the rules), `antislop-ui` (visual and layout) and `antislop-human` (contrast, keyboard, focus). They come from [anti-slop](https://github.com/miqdadbadjuber/anti-slop) and stay off unless this section turns them on.
+
+- When a change adds or edits anything the person sees in `ui/` (markup, styles, texts, behaviour of a control), load the three skills before writing, and tell the user in one line that they are active. Do not wait for an answer.
+- Do not load them for anything else: Rust code, tests, documentation, or a change in `ui/app.js` that does not alter what is shown.
+- The mode is already chosen, so do not ask it: `during` for a change, `after` only when the user asks for an audit of the existing interface. The findings of an audit go in [UI-AUDIT.md](UI-AUDIT.md), numbered; tick each one in the pull request that fixes it.
+- The design direction they need is in `DESIGN.md`. If it does not exist yet, say so and write it with the user before a visual change.
+- Check every colour pair with `python .claude/skills/antislop-human/contrast-check.py "#text" "#background"` instead of judging by eye.
+- To update the skills, copy the three folders again from the repository and review the difference. Do not run its installer: it adds a block to this file that loads the rules in every session.
+
 ## Commits
 
 - Written in English.
