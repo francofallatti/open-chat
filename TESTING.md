@@ -74,6 +74,7 @@ test("SES-003 eliminar un chat pide confirmación y lo quita de la lista", async
 | `CHAT` | `chat.spec.js` | Escribir, enviar y recibir |
 | `SES` | `sesiones.spec.js` | Lista de chats: abrir, crear, eliminar |
 | `PROV` | `proveedores.spec.js` | Diálogo de proveedores y claves |
+| `ACC` | `accesibilidad.spec.js` | Contraste, teclado, foco y avisos |
 
 ### Casos que llaman a un modelo
 
