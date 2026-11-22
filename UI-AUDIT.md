@@ -25,6 +25,7 @@ Primera revisión: 20 de noviembre de 2026, leyendo el código y calculando los 
 - [ ] **10. Se parece a la app de Claude** (R-30). La paleta crema y carbón usa los mismos tonos y el saludo en serif centrado es el mismo gesto. Falta decidir si se mantiene o se le da identidad propia.
 - [ ] **11. Falta `DESIGN.md`** (R-37). Sin dirección escrita, cada cambio visual es un borrador.
 - [ ] **12. Radios y títulos** (R-11, R-39). Hay nueve radios de borde distintos sin una escala, y no queda ningún `h1` cuando hay un chat abierto.
+- [ ] **14. Falta un control para elegir el tema** (R-21). La app sigue el tema de Windows y no deja cambiarlo desde adentro. Falta un control con tres opciones (claro, oscuro, seguir al sistema) que recuerde la elección. Lo pidió el usuario al revisar el pull request del 2.
 
 ## Notas
 
