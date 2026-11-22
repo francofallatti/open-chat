@@ -122,3 +122,66 @@ for (const scheme of ["light", "dark"]) {
     expect(await ratio("#provider-list .provider-form input"), "campo de clave").toBeGreaterThanOrEqual(3);
   });
 }
+
+// Indicador de foco de un elemento: grosor del contorno y su contraste contra
+// el fondo del elemento y contra el fondo que lo rodea. Grosor 0 si no hay.
+function focusRing(element) {
+  const rgb = (color) => color.match(/[\d.]+/g).map(Number);
+  const luminance = ([r, g, b]) => {
+    const [x, y, z] = [r, g, b].map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * x + 0.7152 * y + 0.0722 * z;
+  };
+  const backgroundFrom = (start) => {
+    for (let node = start; node; node = node.parentElement) {
+      const [r, g, b, alpha = 1] = rgb(getComputedStyle(node).backgroundColor);
+      if (alpha > 0) return [r, g, b];
+    }
+    return [255, 255, 255];
+  };
+  const ratio = (a, b) => {
+    const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (light + 0.05) / (dark + 0.05);
+  };
+  const style = getComputedStyle(element);
+  if (style.outlineStyle === "none") return { width: 0, contrast: 0 };
+  const ring = rgb(style.outlineColor);
+  return {
+    width: parseFloat(style.outlineWidth),
+    contrast: Math.min(ratio(ring, backgroundFrom(element)), ratio(ring, backgroundFrom(element.parentElement))),
+  };
+}
+
+for (const scheme of ["light", "dark"]) {
+  test(`ACC-004 el campo que tiene el foco lo muestra con un contorno (tema ${scheme})`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.emulateMedia({ colorScheme: scheme });
+    const ring = (selector) => page.locator(selector).first().evaluate(focusRing);
+    // Al menos 2 px de grosor y 3:1 de contraste, el mínimo de WCAG AA para un indicador.
+    const expectRing = async (selector, name) => {
+      const { width, contrast } = await ring(selector);
+      expect(width, `grosor en ${name}`).toBeGreaterThanOrEqual(2);
+      expect(contrast, `contraste en ${name}`).toBeGreaterThanOrEqual(3);
+    };
+
+    // El cuadro de mensaje muestra el foco en su marco, no en el área de texto.
+    await page.locator("#input").focus();
+    await expectRing("#composer", "cuadro de mensaje");
+    await page.locator("#new-chat").focus();
+    expect((await ring("#composer")).width, "cuadro de mensaje sin foco").toBe(0);
+
+    await page.locator("#model-btn").click();
+    await expect(page.locator("#model-search")).toBeFocused();
+    await expectRing("#model-search", "buscador de modelos");
+    await page.keyboard.press("Escape");
+
+    await page.locator("#providers-btn").click();
+    await page.locator("#provider-search").focus();
+    await expectRing("#provider-search", "buscador de proveedores");
+    await page.locator("#provider-list .provider .button").first().click();
+    await expect(page.locator("#provider-list .provider-form input")).toBeFocused();
+    await expectRing("#provider-list .provider-form input", "campo de clave");
+  });
+}
