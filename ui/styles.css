@@ -217,7 +217,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   display: block; width: 100%; border: 0; outline: 0; resize: none; background: transparent;
   max-height: 40vh; min-height: 26px; line-height: 1.55; padding: 2px 0 8px;
 }
-#input::placeholder { color: var(--text-3); }
+::placeholder { color: var(--text-3); opacity: 1; }
 .composer-row { display: flex; align-items: center; gap: 8px; }
 
 .model-picker { position: relative; margin-right: auto; margin-left: -8px; min-width: 0; }
