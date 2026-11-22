@@ -7,7 +7,7 @@ Primera revisión: 20 de noviembre de 2026, leyendo el código y calculando los 
 ## Prioridad alta: accesibilidad y función
 
 - [x] **1. Texto gris ilegible** (R-25). `--text-3` daba entre 2.78 y 3.23:1 en tema claro y hasta 3.21:1 en tema oscuro; el mínimo es 4.5:1. Afectaba a "Recientes", el estado del motor, "Aún no hay chats", la nota al pie, el nombre del modelo bajo cada respuesta y los textos de ejemplo de los campos. Caso: `ACC-001`.
-- [ ] **2. Bordes de campos casi invisibles** (R-25). Los buscadores, el campo de clave y los botones secundarios tienen bordes de 1.2 a 1.7:1 contra su fondo; el mínimo para el borde de un control es 3:1.
+- [x] **2. Bordes de campos casi invisibles** (R-25). Los buscadores, el campo de clave y los botones secundarios tenían bordes de 1.2 a 1.7:1 contra su fondo; el mínimo para el borde de un control es 3:1. El cuadro de mensaje tenía el mismo defecto (1.5:1) y se arregló junto. Caso: `ACC-003`.
 - [ ] **3. El cuadro de mensaje no muestra el foco** (R-32). `#input` tiene `outline: 0` sin un reemplazo visible.
 - [ ] **4. Selector de modelo con teclado** (R-32, R-39). Al cerrar con Escape el foco se pierde, las flechas no recorren la lista, y los roles `listbox` y `option` están puestos sobre botones.
 - [ ] **5. Ventana angosta** (R-03). Entre 720 y 760 px de ancho la barra lateral tapa el botón que la oculta y no se puede cerrar.
