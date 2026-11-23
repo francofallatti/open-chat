@@ -185,3 +185,27 @@ for (const scheme of ["light", "dark"]) {
     await expectRing("#provider-list .provider-form input", "campo de clave");
   });
 }
+
+test("ACC-005 en la ventana más angosta el botón de la barra lateral queda a la vista y la oculta", async ({ page }) => {
+  // 720 px es el ancho mínimo de la ventana (tauri.conf.json).
+  await page.setViewportSize({ width: 720, height: 600 });
+  const toggle = page.locator("#toggle-sidebar");
+  // El elemento que recibe el clic en el centro del botón es el botón, no la barra.
+  const reachable = () => toggle.evaluate((button) => {
+    const box = button.getBoundingClientRect();
+    return button.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
+  });
+
+  await expect(page.locator("#sidebar")).toBeInViewport();
+  expect(await reachable(), "botón alcanzable con la barra abierta").toBe(true);
+
+  await toggle.click();
+  await expect(page.locator("#sidebar")).not.toBeInViewport();
+  expect(await reachable(), "botón alcanzable con la barra oculta").toBe(true);
+
+  await toggle.click();
+  await expect(page.locator("#sidebar")).toBeInViewport();
+  // Con la barra abierta el cuadro de mensaje sigue entero dentro de la ventana.
+  await expect(page.locator("#composer")).toBeInViewport({ ratio: 1 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "sin desborde horizontal").toBe(true);
+});
