@@ -4,6 +4,8 @@
   --bg-side: #f0eee6;
   --surface: #ffffff;
   --surface-2: #f0eee6;
+  --surface-3: #dcd8ca;   /* control apretado y chat abierto */
+  --side-hover: #e7e4d9;  /* cursor encima, dentro de la barra lateral */
   --border: #e0ddd2;
   --border-strong: #cfcbbd;
   --border-control: #8c887c;
@@ -12,6 +14,7 @@
   --text-3: #6e6a5f;
   --accent: #2f7d6b;
   --accent-hover: #27695a;
+  --accent-pressed: #1f5446;
   --on-accent: #ffffff;
   --danger: #b3402e;
   --danger-bg: #fbeeea;
@@ -28,6 +31,8 @@
     --bg-side: #1f1e1c;
     --surface: #30302e;
     --surface-2: #3a3936;
+    --surface-3: #474641;
+    --side-hover: #2b2a27;
     --border: #3f3e3a;
     --border-strong: #55534d;
     --border-control: #8a877c;
@@ -36,6 +41,7 @@
     --text-3: #a7a49a;
     --accent: #4fa894;
     --accent-hover: #62b8a4;
+    --accent-pressed: #7cc9b7;
     --on-accent: #10201c;
     --danger: #f08b78;
     --danger-bg: #3a2622;
@@ -92,7 +98,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   padding: 8px 10px; border: 0; border-radius: 8px; background: transparent;
   text-align: left; font-size: 14px;
 }
-.nav-button:hover { background: var(--surface-2); }
+.nav-button:hover { background: var(--side-hover); }
+.nav-button:active { background: var(--surface-3); }
 #new-chat svg { color: var(--on-accent); background: var(--accent); border-radius: 50%; padding: 3px; width: 20px; height: 20px; stroke-width: 2; }
 #new-chat { font-weight: 600; }
 
@@ -104,7 +111,10 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   border-radius: 8px; padding: 0 4px 0 10px; min-height: 34px;
   font-size: 14px; color: var(--text-2);
 }
-.session:hover, .session.active { background: var(--surface-2); color: var(--text); }
+.session:hover { background: var(--side-hover); color: var(--text); }
+/* El chat abierto se distingue del que tiene el cursor encima por el fondo y por el peso. */
+.session.active, .session:has(.session-title:active) { background: var(--surface-3); color: var(--text); }
+.session.active { font-weight: 600; }
 .session-title {
   flex: 1; min-width: 0; padding: 6px 0; border: 0; background: none; text-align: left;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: inherit;
@@ -113,6 +123,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .session-delete { opacity: 0; border: 0; background: none; padding: 5px; border-radius: 6px; color: var(--text-3); display: flex; }
 .session:hover .session-delete, .session-delete:focus-visible { opacity: 1; }
 .session-delete:hover { color: var(--danger); background: var(--danger-bg); }
+.session-delete:active { color: var(--bg-side); background: var(--danger); }
 .sessions-empty { padding: 8px 10px; font-size: 13px; color: var(--text-3); }
 
 .sidebar-foot { border-top: 1px solid var(--border); padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
@@ -129,6 +140,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 #chat-title { font-size: 14px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .icon-button { border: 0; background: none; padding: 7px; border-radius: 8px; color: var(--text-2); display: flex; }
 .icon-button:hover { background: var(--surface-2); color: var(--text); }
+.icon-button:active { background: var(--surface-3); }
 
 #thread-wrap { flex: 1; min-height: 0; overflow-y: auto; scroll-behavior: smooth; }
 #thread { max-width: 780px; margin: 0 auto; padding: 8px 24px 32px; display: flex; flex-direction: column; gap: 22px; }
@@ -173,6 +185,8 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   color: var(--text-2); font-size: 12px; padding: 2px 8px; border-radius: 6px; opacity: 0;
 }
 .prose pre:hover .copy-code, .copy-code:focus-visible { opacity: 1; }
+.copy-code:hover { color: var(--text); }
+.copy-code:active { background: var(--surface-3); color: var(--text); }
 
 .reasoning { margin: 0 0 10px; color: var(--text-2); font-size: 13.5px; }
 .reasoning summary { cursor: pointer; width: fit-content; color: var(--text-3); user-select: none; }
@@ -197,6 +211,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .msg-actions { display: flex; gap: 2px; margin-top: 6px; align-items: center; }
 .msg-actions button { border: 0; background: none; color: var(--text-3); padding: 5px; border-radius: 6px; display: flex; }
 .msg-actions button:hover { background: var(--surface-2); color: var(--text); }
+.msg-actions button:active { background: var(--surface-3); }
 .msg-actions button.copied { color: var(--text); gap: 5px; align-items: center; font-size: 12px; }
 .msg-actions svg { width: 16px; height: 16px; }
 .msg-model { font-size: 12px; color: var(--text-3); margin-left: 6px; }
@@ -234,6 +249,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
   border: 0; background: none; border-radius: 8px; padding: 5px 8px; font-size: 13.5px; color: var(--text-2);
 }
 #model-btn:hover { background: var(--surface-2); color: var(--text); }
+#model-btn:active { background: var(--surface-3); }
 #model-btn svg { width: 15px; height: 15px; }
 #model-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #model-menu {
@@ -263,6 +279,7 @@ input[type="search"] {
 }
 .send svg { stroke-width: 2; }
 .send:hover { background: var(--accent-hover); }
+.send:active { background: var(--accent-pressed); }
 .send:disabled { opacity: 0.35; cursor: default; background: var(--accent); }
 .send.stop svg { fill: currentColor; stroke: none; }
 
@@ -294,7 +311,8 @@ dialog::backdrop { background: rgba(20, 19, 16, 0.45); }
 .provider-row { display: flex; align-items: center; gap: 10px; }
 .provider-name { flex: 1; min-width: 0; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .provider-state { font-size: 12.5px; color: var(--accent); font-weight: 600; }
-.provider-form { display: flex; gap: 8px; margin-top: 8px; }
+.provider-form { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 10px; }
+.provider-form label { flex-basis: 100%; font-size: 13px; color: var(--text-2); }
 .provider-form input {
   flex: 1; min-width: 0; border: 1px solid var(--border-control); background: var(--bg); border-radius: 8px; padding: 6px 10px; font-family: var(--mono); font-size: 13px;
 }
@@ -303,8 +321,10 @@ dialog::backdrop { background: rgba(20, 19, 16, 0.45); }
   border: 1px solid var(--border-control); background: var(--surface); border-radius: 8px; padding: 5px 12px; font-size: 13.5px; white-space: nowrap;
 }
 .button:hover { background: var(--surface-2); }
+.button:active { background: var(--surface-3); }
 .button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .button.primary:hover { background: var(--accent-hover); }
+.button.primary:active { background: var(--accent-pressed); border-color: var(--accent-pressed); }
 .button:disabled { opacity: 0.5; cursor: default; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }

@@ -33,6 +33,12 @@ test("PROV-003 «Conectar» abre el campo para la clave de ese proveedor", async
 
   const key = page.locator("#provider-list .provider-form input");
   await expect(key).toHaveAttribute("type", "password");
-  await expect(key).toHaveAttribute("placeholder", `Clave de API de ${name}`);
+  // La etiqueta se ve arriba del campo y le da el nombre; no depende del texto de ejemplo.
+  const label = page.locator("#provider-list .provider-form label");
+  await expect(label).toBeVisible();
+  await expect(label).toHaveText(`Clave de API de ${name}`);
+  await expect(label).toHaveAttribute("for", await key.getAttribute("id"));
+  await expect(key).toHaveAccessibleName(`Clave de API de ${name}`);
+  expect(await key.getAttribute("placeholder"), "sin texto de ejemplo que haga de etiqueta").toBeNull();
   await expect(key).toBeFocused();
 });
