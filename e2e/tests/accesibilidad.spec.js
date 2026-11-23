@@ -1,4 +1,4 @@
-import { test, expect } from "../support/app.js";
+import { test, expect, seedChat } from "../support/app.js";
 
 // Contraste WCAG 2.x entre dos colores "#rrggbb", calculado dentro de la página.
 function contrastPairs() {
@@ -208,4 +208,85 @@ test("ACC-005 en la ventana más angosta el botón de la barra lateral queda a l
   // Con la barra abierta el cuadro de mensaje sigue entero dentro de la ventana.
   await expect(page.locator("#composer")).toBeInViewport({ ratio: 1 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "sin desborde horizontal").toBe(true);
+});
+
+// En la ventana más angosta, con la barra abierta, al contenido le quedan 448 px.
+// Nada de lo que sigue puede quedar cortado por el borde de la ventana.
+const insideWindow = (locator) => locator.evaluate((element) => {
+  const box = element.getBoundingClientRect();
+  return box.width > 0 && box.left >= 0 && box.right <= window.innerWidth && box.top >= 0 && box.bottom <= window.innerHeight;
+});
+const noHorizontalOverflow = (page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+
+test("ACC-006 en la ventana más angosta un título de chat largo se corta y no empuja el contenido", async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 600 });
+  const title = "Un título de chat extremadamente largo que no entra ni en la barra lateral ni arriba de la ventana angosta";
+  await seedChat(page, title);
+  await page.locator("#sessions .session-title").click();
+
+  const chatTitle = page.locator("#chat-title");
+  await expect(chatTitle).toHaveText(title);
+  expect(await insideWindow(chatTitle), "título dentro de la ventana").toBe(true);
+  // Cortado con puntos suspensivos: el texto mide más que su caja.
+  expect(await chatTitle.evaluate((element) => element.scrollWidth > element.clientWidth), "título cortado").toBe(true);
+  expect(await insideWindow(page.locator("#toggle-sidebar")), "botón de la barra dentro de la ventana").toBe(true);
+  await expect(page.locator("#composer")).toBeInViewport({ ratio: 1 });
+  expect(await noHorizontalOverflow(page), "sin desborde horizontal").toBe(true);
+});
+
+test("ACC-007 en la ventana más angosta el menú de modelos y el diálogo de proveedores entran con la barra abierta", async ({ page }) => {
+  await page.setViewportSize({ width: 720, height: 600 });
+  await expect(page.locator("#sidebar")).toBeInViewport();
+
+  await page.locator("#model-btn").click();
+  await expect(page.locator("#model-menu")).toBeVisible();
+  expect(await insideWindow(page.locator("#model-menu")), "menú de modelos dentro de la ventana").toBe(true);
+  await page.keyboard.press("Escape");
+
+  await page.locator("#providers-btn").click();
+  await expect(page.locator("#providers-dialog")).toBeVisible();
+  expect(await insideWindow(page.locator("#providers-dialog")), "diálogo dentro de la ventana").toBe(true);
+  expect(await noHorizontalOverflow(page), "sin desborde horizontal").toBe(true);
+});
+
+test.describe("con una respuesta ancha del modelo de prueba", () => {
+  const answer = [
+    "Un párrafo antes del código.",
+    "",
+    "```js",
+    "const unaLineaMuyLargaDeCodigo = calcularAlgo(primerArgumentoLargo, segundoArgumentoLargo, tercerArgumentoLargo, cuartoArgumentoLargo);",
+    "```",
+    "",
+    "https://ejemplo.com/una/direccion/muy/larga/sin/espacios/que/no/se/puede/cortar/facilmente/en/ningun/lado/para/probar",
+  ].join("\n");
+  test.use({ useFakeModel: true, fakeAnswer: answer });
+
+  test("ACC-008 en la ventana más angosta una respuesta con código ancho no ensancha la ventana", async ({ page, fakeModel }) => {
+    await page.setViewportSize({ width: 720, height: 600 });
+    await page.locator("#model-btn").click();
+    await page.locator("#model-search").fill(fakeModel.name);
+    await page.locator("#model-list .model-option").first().click();
+    await expect(page.locator("#model-label")).toHaveText(fakeModel.name);
+
+    await page.locator("#input").fill("mostrame código");
+    await page.locator("#input").press("Enter");
+    const code = page.locator("#thread .msg.assistant pre");
+    await expect(code).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator("#thread .msg-error")).toHaveCount(0);
+    await expect(page.locator("#sidebar")).toBeInViewport();
+
+    // El bloque de código queda dentro de la ventana y se desplaza dentro de sí mismo.
+    const box = await code.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, scrolls: element.scrollWidth > element.clientWidth };
+    });
+    expect(box.left, "el código no queda bajo la barra").toBeGreaterThanOrEqual(272);
+    expect(box.right, "el código no pasa el borde").toBeLessThanOrEqual(720);
+    expect(box.scrolls, "el código se desplaza dentro de su bloque").toBe(true);
+    // La dirección larga se parte en vez de salirse.
+    const prose = await page.locator("#thread .msg.assistant .prose").evaluate((element) => element.getBoundingClientRect().right);
+    expect(prose, "el texto no pasa el borde").toBeLessThanOrEqual(720);
+    expect(await noHorizontalOverflow(page), "sin desborde horizontal").toBe(true);
+    await expect(page.locator("#composer")).toBeInViewport({ ratio: 1 });
+  });
 });
