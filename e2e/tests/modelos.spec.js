@@ -73,6 +73,49 @@ test("MOD-006 las flechas recorren la lista de modelos y Enter elige el activo",
   await expect(page.locator("#model-label")).toHaveText(second);
 });
 
+test("MOD-008 Tab en el buscador cierra el menú y el foco no queda en la lista", async ({ page }) => {
+  // Con el cuadro de mensaje vacío no hay ningún control habilitado después del selector.
+  await page.locator("#model-btn").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#model-search")).toBeFocused();
+
+  await page.keyboard.press("Tab");
+  await expect(page.locator("#model-menu")).toBeHidden();
+  await expect(page.locator("#model-list")).not.toBeFocused();
+
+  // Con Mayús+Tab el menú también se cierra y el foco vuelve al botón.
+  await page.locator("#model-btn").click();
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("#model-menu")).toBeHidden();
+  await expect(page.locator("#model-btn")).toBeFocused();
+});
+
+test("MOD-009 Enter en el buscador sin coincidencias no envía el mensaje a medio escribir", async ({ page }) => {
+  await page.locator("#input").fill("mensaje a medio escribir");
+  await page.locator("#model-btn").click();
+  await page.locator("#model-search").fill("modelo-que-no-existe-xyz");
+  await page.keyboard.press("Enter");
+
+  await expect(page.locator("#input")).toHaveValue("mensaje a medio escribir");
+  await expect(page.locator("#thread .msg")).toHaveCount(0);
+  await expect(page.locator("#model-search")).toBeFocused();
+});
+
+test("MOD-010 el menú de modelos entra en la ventana y recorrerlo no la desplaza", async ({ page }) => {
+  await page.locator("#model-btn").click();
+  await page.keyboard.press("End");
+
+  const { scrolled, bottom, height } = await page.evaluate(() => ({
+    scrolled: document.scrollingElement.scrollTop + document.body.scrollTop,
+    bottom: document.querySelector("#model-menu").getBoundingClientRect().bottom,
+    height: window.innerHeight,
+  }));
+  expect(scrolled, "desplazamiento de la ventana").toBe(0);
+  expect(bottom, "borde inferior del menú").toBeLessThanOrEqual(height);
+  // La última opción quedó a la vista dentro de la lista.
+  await expect(page.locator("#model-list .model-option.active")).toBeInViewport({ ratio: 1 });
+});
+
 test("MOD-007 el lector de pantalla recibe una lista de opciones y cuál está activa", async ({ page }) => {
   await page.locator("#model-btn").click();
   const search = page.locator("#model-search");
