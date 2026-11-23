@@ -62,7 +62,7 @@ async function removeDir(dir) {
 // modelo, sin red ni cupo.
 const FAKE_ANSWER = "Respuesta del modelo de prueba.";
 
-async function startFakeModel() {
+async function startFakeModel(answer) {
   const requests = [];
   const server = createHttpServer((req, res) => {
     let body = "";
@@ -72,7 +72,7 @@ async function startFakeModel() {
       const chunk = (delta, finish = null) =>
         `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 0, model: "fake", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
       res.writeHead(200, { "content-type": "text/event-stream" });
-      res.write(chunk({ role: "assistant", content: FAKE_ANSWER }));
+      res.write(chunk({ role: "assistant", content: answer }));
       res.write(chunk({}, "stop"));
       res.end("data: [DONE]\n\n");
     });
@@ -81,7 +81,7 @@ async function startFakeModel() {
   return {
     /** Nombre con el que aparece en el selector de modelos. */
     name: "Modelo de prueba",
-    answer: FAKE_ANSWER,
+    answer,
     /** Cuerpos de las peticiones recibidas, en orden. */
     requests,
     engineConfig: {
@@ -108,10 +108,12 @@ export const test = base.extend({
   // Con `test.use({ useFakeModel: true })` el motor arranca con un modelo local,
   // que el caso recibe como `fakeModel`.
   useFakeModel: [false, { option: true }],
+  // Con `test.use({ fakeAnswer: "…" })` el modelo de prueba contesta ese texto.
+  fakeAnswer: [FAKE_ANSWER, { option: true }],
 
-  fakeModel: async ({ useFakeModel }, use) => {
+  fakeModel: async ({ useFakeModel, fakeAnswer }, use) => {
     if (!useFakeModel) return use(null);
-    const fake = await startFakeModel();
+    const fake = await startFakeModel(fakeAnswer);
     await use(fake);
     await fake.close();
   },
