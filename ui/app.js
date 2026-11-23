@@ -103,7 +103,7 @@ async function loadModels() {
     state.model = known(saved) ? saved : known(fallback) ? fallback : models[0] ? { id: models[0].id, provider: models[0].provider } : null;
   }
   renderModelButton();
-  if (!el.modelMenu.hidden) renderModelList();
+  if (!el.modelMenu.hidden) renderModelList(true);
 }
 
 function renderModelButton() {
@@ -112,12 +112,16 @@ function renderModelButton() {
   updateSendState();
 }
 
-function renderModelList() {
+// keepActive: la lista se vuelve a dibujar porque cambió el catálogo, no porque
+// la persona buscó, así que la opción activa sigue siendo la que era.
+function renderModelList(keepActive = false) {
+  const previous = keepActive ? el.modelList.querySelector(".model-option.active")?.dataset.key : null;
   const term = el.modelSearch.value.trim().toLowerCase();
   const matches = state.models.filter((m) => !term || `${m.name} ${m.providerName} ${m.id}`.toLowerCase().includes(term));
   el.modelList.replaceChildren();
   if (!matches.length) {
     el.modelList.append(node("div", "model-empty", state.models.length ? "Ningún modelo coincide." : "No hay modelos. Conecta un proveedor."));
+    setActiveOption(null);
     return;
   }
   const groups = new Map();
@@ -125,16 +129,73 @@ function renderModelList() {
     if (!groups.has(m.providerName)) groups.set(m.providerName, []);
     groups.get(m.providerName).push(m);
   }
+  let count = 0;
   for (const [provider, items] of groups) {
-    el.modelList.append(node("div", "model-group", provider));
+    const label = node("div", "model-group", provider);
+    label.id = `model-group-${count}`;
+    const group = node("div");
+    group.setAttribute("role", "group");
+    group.setAttribute("aria-labelledby", label.id);
+    group.append(label);
     for (const m of items) {
-      const option = node("button", "model-option", m.name);
-      option.type = "button";
+      // El foco se queda en el buscador: las opciones no son botones y la activa
+      // se le indica al lector de pantalla con aria-activedescendant.
+      const option = node("div", "model-option", m.name);
+      option.id = `model-option-${count++}`;
+      option.dataset.key = `${m.provider}/${m.id}`;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", String(sameModel(m, state.model)));
       option.addEventListener("click", () => chooseModel({ id: m.id, provider: m.provider }));
-      el.modelList.append(option);
+      option.addEventListener("pointermove", () => setActiveOption(option, false));
+      group.append(option);
     }
+    el.modelList.append(group);
+  }
+  const options = modelOptions();
+  setActiveOption(
+    (previous && options.find((o) => o.dataset.key === previous))
+    || (term ? null : options.find((o) => o.getAttribute("aria-selected") === "true"))
+    || options[0],
+  );
+}
+
+function modelOptions() {
+  return [...el.modelList.querySelectorAll(".model-option")];
+}
+
+function setActiveOption(option, scroll = true) {
+  for (const other of modelOptions()) other.classList.toggle("active", other === option);
+  if (option) {
+    el.modelSearch.setAttribute("aria-activedescendant", option.id);
+    // Se mueve solo la lista: scrollIntoView también desplazaría la ventana.
+    if (scroll) {
+      const list = el.modelList.getBoundingClientRect();
+      const item = option.getBoundingClientRect();
+      if (item.top < list.top) el.modelList.scrollTop -= list.top - item.top;
+      else if (item.bottom > list.bottom) el.modelList.scrollTop += item.bottom - list.bottom;
+    }
+  } else {
+    el.modelSearch.removeAttribute("aria-activedescendant");
+  }
+}
+
+function modelSearchKey(event) {
+  const options = modelOptions();
+  const index = options.findIndex((o) => o.classList.contains("active"));
+  const target = {
+    ArrowDown: options[Math.min(index + 1, options.length - 1)],
+    ArrowUp: options[Math.max(index - 1, 0)],
+    Home: options[0],
+    End: options[options.length - 1],
+  }[event.key];
+  if (target) {
+    event.preventDefault();
+    setActiveOption(target);
+  } else if (event.key === "Enter") {
+    event.preventDefault(); // Enter en el buscador nunca envía el mensaje a medio escribir
+    options[index]?.click();
+  } else if (event.key === "Tab") {
+    toggleModelMenu(false); // el foco sigue su camino al control anterior o siguiente
   }
 }
 
@@ -143,6 +204,11 @@ function toggleModelMenu(open) {
   el.modelBtn.setAttribute("aria-expanded", String(open));
   if (open) {
     el.modelSearch.value = "";
+    // El menú no pasa del borde de la ventana: abre hacia abajo en la pantalla
+    // inicial y hacia arriba cuando hay un chat.
+    const button = el.modelBtn.getBoundingClientRect();
+    const space = el.main.classList.contains("empty") ? window.innerHeight - button.bottom : button.top;
+    el.modelMenu.style.maxHeight = `${Math.max(140, Math.min(420, space - 20))}px`;
     renderModelList();
     el.modelSearch.focus();
   }
@@ -632,7 +698,14 @@ $("toggle-sidebar").addEventListener("click", () => el.app.classList.toggle("sid
 $("providers-btn").addEventListener("click", openProviders);
 el.providerSearch.addEventListener("input", () => renderProviders());
 el.modelBtn.addEventListener("click", () => toggleModelMenu(el.modelMenu.hidden));
-el.modelSearch.addEventListener("input", renderModelList);
+el.modelSearch.addEventListener("input", () => renderModelList());
+el.modelSearch.addEventListener("keydown", modelSearchKey);
+// Un clic en la lista no le quita el foco al buscador.
+el.modelList.addEventListener("mousedown", (event) => event.preventDefault());
+// Si el foco sale del selector con Tab, el menú se cierra.
+el.modelMenu.parentElement.addEventListener("focusout", (event) => {
+  if (!el.modelMenu.hidden && event.relatedTarget && !event.relatedTarget.closest(".model-picker")) toggleModelMenu(false);
+});
 
 document.addEventListener("click", (event) => {
   if (!el.modelMenu.hidden && !event.target.closest(".model-picker")) toggleModelMenu(false);
@@ -643,7 +716,10 @@ document.addEventListener("click", (event) => {
   }
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && !el.modelMenu.hidden) toggleModelMenu(false);
+  if (event.key === "Escape" && !el.modelMenu.hidden) {
+    toggleModelMenu(false);
+    el.modelBtn.focus(); // el foco vuelve al botón que abrió el menú
+  }
   if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "o") {
     event.preventDefault();
     newChat();

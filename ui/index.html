@@ -53,13 +53,13 @@
           <textarea id="input" rows="1" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
           <div class="composer-row">
             <div class="model-picker">
-              <button id="model-btn" type="button" aria-haspopup="listbox" aria-expanded="false">
+              <button id="model-btn" type="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="model-menu">
                 <span id="model-label">Elegir modelo</span>
                 <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 8l5 5 5-5" /></svg>
               </button>
               <div id="model-menu" hidden>
-                <input id="model-search" type="search" placeholder="Buscar modelo…" aria-label="Buscar modelo" />
-                <div id="model-list" role="listbox"></div>
+                <input id="model-search" type="search" placeholder="Buscar modelo…" aria-label="Buscar modelo" role="combobox" aria-expanded="true" aria-controls="model-list" aria-autocomplete="list" autocomplete="off" />
+                <div id="model-list" role="listbox" aria-label="Modelos" tabindex="-1"></div>
               </div>
             </div>
             <button id="send" class="send" type="submit" title="Enviar" aria-label="Enviar" disabled>
