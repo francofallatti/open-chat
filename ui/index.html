@@ -27,7 +27,7 @@
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7 9V6a3 3 0 0 1 6 0v3M5 9h10v7H5z" /></svg>
           Proveedores y claves
         </button>
-        <div id="status" class="status"><span class="dot"></span><span id="status-text">Iniciando…</span></div>
+        <div id="status" class="status" role="status"><span class="dot"></span><span id="status-text">Iniciando…</span></div>
       </div>
     </aside>
 
@@ -48,7 +48,7 @@
       </section>
 
       <section id="composer-wrap">
-        <div id="notice" hidden></div>
+        <div id="notice" role="alert" hidden></div>
         <form id="composer" autocomplete="off">
           <textarea id="input" rows="1" placeholder="Escribe un mensaje…" aria-label="Mensaje"></textarea>
           <div class="composer-row">
@@ -74,6 +74,8 @@
       </section>
     </main>
   </div>
+
+  <div id="announcer" class="sr-only" role="status"></div>
 
   <dialog id="providers-dialog">
     <form method="dialog" class="dialog-head">

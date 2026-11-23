@@ -93,7 +93,7 @@ test.describe("con el modelo de prueba", () => {
   test("CHAT-004 …", async ({ page, fakeModel }) => {
 ```
 
-El motor arranca con un proveedor que apunta a un servidor de la propia suite. Aparece en el selector como `fakeModel.name`, contesta siempre `fakeModel.answer` y deja en `fakeModel.requests` cada petición que recibió. Para que conteste otro texto, por ejemplo markdown con un bloque de código, se agrega `fakeAnswer: "…"` al `test.use`. Estos casos no llevan `@modelo`: corren también en `npm run test:rapido`.
+El motor arranca con un proveedor que apunta a un servidor de la propia suite. Aparece en el selector como `fakeModel.name`, contesta siempre `fakeModel.answer` y deja en `fakeModel.requests` cada petición que recibió. Para que conteste otro texto, por ejemplo markdown con un bloque de código, se agrega `fakeAnswer: "…"` al `test.use`. Para que rechace cada petición con un error en vez de contestar, se agrega `fakeFailure: "mensaje del error"`. Estos casos no llevan `@modelo`: corren también en `npm run test:rapido`.
 
 ## Escribir un caso
 

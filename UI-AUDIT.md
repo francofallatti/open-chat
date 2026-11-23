@@ -15,7 +15,7 @@ Primera revisión: 20 de noviembre de 2026, leyendo el código y calculando los 
 
 ## Prioridad alta: estados y avisos
 
-- [ ] **6. Los errores no se anuncian** (R-39). `#notice` y los errores de proveedor no tienen `role="alert"`. El indicador de "respondiendo" y el punto de chat ocupado no tienen nombre accesible.
+- [x] **6. Los errores no se anuncian** (R-39). `#notice` y los errores de proveedor no tenían `role="alert"`, y el nombre del indicador de "respondiendo" estaba puesto sobre un `div` sin rol, donde no vale. Ahora los avisos y los errores de proveedor son alertas, el campo de clave queda marcado como inválido y enlazado a su error, y los puntos animados tienen nombre. Una región oculta le dice al lector de pantalla cuándo el modelo empieza a responder y cómo terminó: lista, detenida o con qué error. El estado del motor también se anuncia. Casos: `ACC-009` a `ACC-012`.
 - [ ] **7. Falta el estado de carga** (R-27). Al abrir un chat el hilo queda en blanco hasta que llegan los mensajes.
 - [ ] **8. "Copiar respuesta" no confirma** (R-26). El botón de copiar código sí lo hace.
 - [ ] **9. Estados de los controles** (R-39). El chat activo se ve igual que el que tiene el cursor encima y no lleva `aria-current`. Ningún control tiene estado `:active`. El campo de clave no tiene etiqueta visible.
