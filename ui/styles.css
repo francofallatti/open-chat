@@ -197,6 +197,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .msg-actions { display: flex; gap: 2px; margin-top: 6px; align-items: center; }
 .msg-actions button { border: 0; background: none; color: var(--text-3); padding: 5px; border-radius: 6px; display: flex; }
 .msg-actions button:hover { background: var(--surface-2); color: var(--text); }
+.msg-actions button.copied { color: var(--text); gap: 5px; align-items: center; font-size: 12px; }
 .msg-actions svg { width: 16px; height: 16px; }
 .msg-model { font-size: 12px; color: var(--text-3); margin-left: 6px; }
 

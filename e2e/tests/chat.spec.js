@@ -76,4 +76,49 @@ test.describe("con el modelo de prueba", () => {
     // Solo conversación: la única herramienta es la lectura que exigen los modelos gratuitos.
     expect((request.tools ?? []).map((t) => t.function.name)).toEqual(["read"]);
   });
+
+  // Envía un mensaje y espera la respuesta del modelo de prueba.
+  const askFakeModel = async (page, fakeModel) => {
+    await page.locator("#model-btn").click();
+    await page.locator("#model-search").fill(fakeModel.name);
+    await page.locator("#model-list .model-option").first().click();
+    await page.locator("#input").fill("hola");
+    await page.locator("#input").press("Enter");
+    await expect(page.locator("#thread .msg.assistant .prose")).toHaveText(fakeModel.answer, { timeout: 30_000 });
+    await expect(page.locator("#stop")).toBeHidden();
+  };
+
+  test("CHAT-005 «Copiar respuesta» copia el texto y lo confirma en el botón", async ({ page, fakeModel }) => {
+    await askFakeModel(page, fakeModel);
+    // El portapapeles se reemplaza para leer qué se copió sin pedir permisos.
+    await page.evaluate(() => {
+      navigator.clipboard.writeText = async (text) => { window.__copied = text; };
+    });
+
+    const copy = page.locator("#thread .msg.assistant .msg-actions button");
+    await expect(copy).toHaveAccessibleName("Copiar respuesta");
+    await copy.click();
+
+    expect(await page.evaluate(() => window.__copied)).toBe(fakeModel.answer);
+    await expect(copy).toHaveText("Copiado");
+    await expect(copy).toHaveAccessibleName("Respuesta copiada");
+    await expect(page.locator("#announcer")).toHaveText("Respuesta copiada");
+    // La confirmación es pasajera: el botón vuelve a su estado inicial.
+    await expect(copy).toHaveAccessibleName("Copiar respuesta", { timeout: 5_000 });
+    await expect(copy).toHaveText("");
+  });
+
+  test("CHAT-006 si el portapapeles rechaza la copia se avisa y no se confirma", async ({ page, fakeModel }) => {
+    await askFakeModel(page, fakeModel);
+    await page.evaluate(() => {
+      navigator.clipboard.writeText = async () => { throw new Error("portapapeles no disponible"); };
+    });
+
+    const copy = page.locator("#thread .msg.assistant .msg-actions button");
+    await copy.click();
+
+    await expect(page.locator("#notice")).toHaveText("No se pudo copiar: portapapeles no disponible");
+    await expect(copy).toHaveAccessibleName("Copiar respuesta");
+    await expect(copy).toHaveText("");
+  });
 });

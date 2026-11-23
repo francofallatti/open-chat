@@ -379,14 +379,29 @@ function reasoningBlock(text, open) {
   return details;
 }
 
+const COPIED_MS = 1400; // cuánto dura la confirmación de una copia
+
+// Copia al portapapeles y se lo dice al lector de pantalla. Devuelve si se pudo.
+async function copyText(text, spoken) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (error) {
+    showNotice(`No se pudo copiar: ${errorText(error)}`);
+    return false;
+  }
+  announce(spoken);
+  setTimeout(() => { if (el.announcer.textContent === spoken) announce(""); }, COPIED_MS);
+  return true;
+}
+
 function decorateProse(prose) {
   for (const pre of prose.querySelectorAll("pre")) {
     const copy = node("button", "copy-code", "Copiar");
     copy.type = "button";
     copy.addEventListener("click", async () => {
-      await navigator.clipboard.writeText(pre.querySelector("code")?.textContent ?? "");
+      if (!(await copyText(pre.querySelector("code")?.textContent ?? "", "Código copiado"))) return;
       copy.textContent = "Copiado";
-      setTimeout(() => (copy.textContent = "Copiar"), 1400);
+      setTimeout(() => (copy.textContent = "Copiar"), COPIED_MS);
     });
     pre.append(copy);
   }
@@ -426,7 +441,18 @@ async function assistantNode(message) {
     copy.title = "Copiar respuesta";
     copy.setAttribute("aria-label", "Copiar respuesta");
     copy.append(icon("M7 7V4h9v9h-3M4 7h9v9H4z"));
-    copy.addEventListener("click", () => navigator.clipboard.writeText(texts.join("\n\n")));
+    copy.addEventListener("click", async () => {
+      if (copy.classList.contains("copied") || !(await copyText(texts.join("\n\n"), "Respuesta copiada"))) return;
+      // La confirmación se ve en el botón: una marca y la palabra, como en el de copiar código.
+      copy.classList.add("copied");
+      copy.setAttribute("aria-label", "Respuesta copiada");
+      copy.replaceChildren(icon("M4 10.5l4 4 8-9"), "Copiado");
+      setTimeout(() => {
+        copy.classList.remove("copied");
+        copy.setAttribute("aria-label", "Copiar respuesta");
+        copy.replaceChildren(icon("M7 7V4h9v9h-3M4 7h9v9H4z"));
+      }, COPIED_MS);
+    });
     actions.append(copy, node("span", "msg-model", modelName(message.model)));
     box.append(actions);
   }
