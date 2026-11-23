@@ -17,7 +17,7 @@ Primera revisión: 20 de noviembre de 2026, leyendo el código y calculando los 
 
 - [x] **6. Los errores no se anuncian** (R-39). `#notice` y los errores de proveedor no tenían `role="alert"`, y el nombre del indicador de "respondiendo" estaba puesto sobre un `div` sin rol, donde no vale. Ahora los avisos y los errores de proveedor son alertas, el campo de clave queda marcado como inválido y enlazado a su error, y los puntos animados tienen nombre. Una región oculta le dice al lector de pantalla cuándo el modelo empieza a responder y cómo terminó: lista, detenida o con qué error. El estado del motor también se anuncia. Casos: `ACC-009` a `ACC-012`.
 - [x] **7. Falta el estado de carga** (R-27). Al abrir un chat, el hilo anterior (o el saludo) seguía en pantalla hasta que llegaban los mensajes del nuevo. Ahora el hilo se vacía al instante y muestra "Cargando el chat…", que también recibe el lector de pantalla. El texto aparece a los 0,2 s para que una carga inmediata no parpadee. Caso: `SES-006`.
-- [ ] **8. "Copiar respuesta" no confirma** (R-26). El botón de copiar código sí lo hace.
+- [x] **8. "Copiar respuesta" no confirma** (R-26). El botón de copiar código cambiaba a "Copiado" y el de copiar la respuesta no hacía nada visible. Ahora muestra una marca y la palabra "Copiado" durante 1,4 s, y el lector de pantalla recibe "Respuesta copiada" (o "Código copiado"). Si el portapapeles rechaza la copia, los dos botones muestran un aviso en vez de confirmar. Casos: `CHAT-005` y `CHAT-006`.
 - [ ] **9. Estados de los controles** (R-39). El chat activo se ve igual que el que tiene el cursor encima y no lleva `aria-current`. Ningún control tiene estado `:active`. El campo de clave no tiene etiqueta visible.
 
 ## Prioridad baja: identidad y consistencia
