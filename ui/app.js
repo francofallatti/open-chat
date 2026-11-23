@@ -777,6 +777,9 @@ el.input.addEventListener("keydown", (event) => {
   }
 });
 el.stop.addEventListener("click", stop);
+// Selector de tema (las funciones están en theme.js).
+$("theme").querySelector(`input[value="${savedTheme()}"]`).checked = true;
+$("theme").addEventListener("change", (event) => chooseTheme(event.target.value));
 $("new-chat").addEventListener("click", newChat);
 $("toggle-sidebar").addEventListener("click", () => el.app.classList.toggle("sidebar-hidden"));
 $("providers-btn").addEventListener("click", openProviders);
