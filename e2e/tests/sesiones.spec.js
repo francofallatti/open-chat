@@ -83,3 +83,33 @@ test("SES-006 al abrir un chat el hilo muestra que está cargando hasta que lleg
   // Con los mensajes cargados el aviso ya no está.
   await expect(page.locator("#thread .thread-loading")).toHaveCount(0);
 });
+
+for (const scheme of ["light", "dark"]) {
+  test(`SES-007 el chat abierto se distingue del que tiene el cursor encima (tema ${scheme})`, async ({ page }) => {
+    await seedChat(page, "primer chat");
+    await seedChat(page, "segundo chat");
+    await page.emulateMedia({ colorScheme: scheme });
+    const row = (title) => page.locator("#sessions .session").filter({ hasText: title });
+    const look = (locator) => locator.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { background: style.backgroundColor, weight: Number(style.fontWeight) };
+    });
+
+    await row("primer chat").locator(".session-title").click();
+    await expect(row("primer chat")).toHaveClass(/active/);
+    await row("segundo chat").hover();
+
+    const open = await look(row("primer chat"));
+    const hovered = await look(row("segundo chat"));
+    const sidebar = await page.locator("#sidebar").evaluate((element) => getComputedStyle(element).backgroundColor);
+    expect(hovered.background, "el cursor encima cambia el fondo").not.toBe(sidebar);
+    expect(open.background, "el chat abierto cambia el fondo").not.toBe(sidebar);
+    expect(open.background, "abierto y con el cursor encima no se ven igual").not.toBe(hovered.background);
+    // Además del color, el chat abierto va en negrita.
+    expect(open.weight).toBeGreaterThan(hovered.weight);
+
+    // El lector de pantalla recibe cuál es el chat abierto.
+    await expect(row("primer chat").locator(".session-title")).toHaveAttribute("aria-current", "page");
+    expect(await row("segundo chat").locator(".session-title").getAttribute("aria-current")).toBeNull();
+  });
+}

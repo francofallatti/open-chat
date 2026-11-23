@@ -380,3 +380,38 @@ test.describe("con un modelo de prueba que rechaza la petición", () => {
     expect((await recorded(page)).announced[0]).toBe("El modelo está respondiendo");
   });
 });
+
+test("ACC-013 cada botón cambia de aspecto mientras está apretado", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  // Fondo del botón con el cursor encima y con el botón del ratón apretado.
+  // El cursor se retira antes de soltar, así el botón no llega a accionarse.
+  const states = async (locator) => {
+    const background = () => locator.evaluate((element) => getComputedStyle(element).backgroundColor);
+    await locator.hover();
+    const hovered = await background();
+    await page.mouse.down();
+    const pressed = await background();
+    await page.mouse.move(0, 0);
+    await page.mouse.up();
+    return { hovered, pressed };
+  };
+  const expectPressed = async (selector, name) => {
+    const { hovered, pressed } = await states(page.locator(selector).first());
+    expect(pressed, `${name} apretado`).not.toBe(hovered);
+  };
+
+  await expectPressed("#new-chat", "Nuevo chat");
+  await expectPressed("#providers-btn", "Proveedores y claves");
+  await expectPressed("#toggle-sidebar", "botón de la barra lateral");
+  await expectPressed("#model-btn", "selector de modelo");
+  await page.locator("#input").fill("hola");
+  await expectPressed("#send", "Enviar");
+  await expect(page.locator("#thread .msg")).toHaveCount(0);
+
+  await page.locator("#providers-btn").click();
+  await expectPressed("#provider-list .provider .button", "Conectar");
+  await page.locator("#provider-list .provider .button").first().click();
+  await expectPressed("#provider-list .provider-form .button.primary", "Guardar");
+  await expectPressed("#providers-dialog .icon-button", "Cerrar");
+  await expect(page.locator("#providers-dialog")).toBeVisible();
+});

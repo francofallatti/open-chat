@@ -272,6 +272,7 @@ function renderSessions() {
     const title = node("button", "session-title", sessionTitle(session));
     title.type = "button";
     title.title = sessionTitle(session);
+    if (session.id === state.sessionId) title.setAttribute("aria-current", "page");
     title.addEventListener("click", () => openSession(session.id));
     row.append(title);
     if (state.busy.has(session.id)) row.append(named(node("span", "busy-dot"), "Respuesta en curso"));
@@ -708,12 +709,13 @@ function renderProviders(failure) {
       const form = node("form", "provider-form");
       const input = node("input");
       input.type = "password";
-      input.placeholder = `Clave de API de ${provider.name}`;
-      input.setAttribute("aria-label", `Clave de API de ${provider.name}`);
+      input.id = "provider-key";
       input.autocomplete = "off";
+      const label = node("label", "", `Clave de API de ${provider.name}`);
+      label.htmlFor = input.id;
       const save = node("button", "button primary", "Guardar");
       save.type = "submit";
-      form.append(input, save);
+      form.append(label, input, save);
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         save.disabled = true;
