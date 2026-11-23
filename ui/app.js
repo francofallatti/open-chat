@@ -7,7 +7,7 @@ const $ = (id) => document.getElementById(id);
 const el = {
   app: $("app"), main: $("main"), sessions: $("sessions"), thread: $("thread"),
   threadWrap: $("thread-wrap"), chatTitle: $("chat-title"), composer: $("composer"),
-  input: $("input"), send: $("send"), stop: $("stop"), notice: $("notice"),
+  input: $("input"), send: $("send"), stop: $("stop"), notice: $("notice"), announcer: $("announcer"),
   modelBtn: $("model-btn"), modelLabel: $("model-label"), modelMenu: $("model-menu"),
   modelSearch: $("model-search"), modelList: $("model-list"),
   status: $("status"), statusText: $("status-text"),
@@ -61,8 +61,27 @@ async function markdown(text) {
 }
 
 function showNotice(message) {
-  el.notice.textContent = message;
+  // Primero se muestra y después se escribe: así el lector de pantalla lo anuncia.
   el.notice.hidden = !message;
+  el.notice.textContent = message;
+}
+
+// Lo que el lector de pantalla dice sin que el foco se mueva.
+function announce(message) {
+  if (el.announcer.textContent !== message) el.announcer.textContent = message;
+}
+
+// Un nodo sin texto (puntos animados) necesita un nombre para el lector de pantalla.
+function named(element, name) {
+  element.setAttribute("role", "img");
+  element.setAttribute("aria-label", name);
+  return element;
+}
+
+function alertNode(className, text) {
+  const box = node("div", className, text);
+  box.setAttribute("role", "alert");
+  return box;
 }
 
 function errorText(error) {
@@ -254,7 +273,7 @@ function renderSessions() {
     title.title = sessionTitle(session);
     title.addEventListener("click", () => openSession(session.id));
     row.append(title);
-    if (state.busy.has(session.id)) row.append(node("span", "busy-dot"));
+    if (state.busy.has(session.id)) row.append(named(node("span", "busy-dot"), "Respuesta en curso"));
 
     const remove = node("button", "session-delete");
     remove.type = "button";
@@ -287,6 +306,7 @@ function newChat() {
   state.messages = [];
   state.live = null;
   showNotice("");
+  announce("");
   renderSessions();
   renderThread();
   updateSendState();
@@ -299,6 +319,7 @@ async function openSession(id) {
   state.messages = [];
   state.live = null;
   showNotice("");
+  announce("");
   renderSessions();
   updateSendState();
 
@@ -425,10 +446,11 @@ async function renderThread(jumpToEnd = false) {
   if (stick) scrollToBottom();
 }
 
+const RESPONDING = "El modelo está respondiendo";
+
 function typingNode() {
   const box = node("div", "msg assistant");
-  const dots = node("div", "typing");
-  dots.setAttribute("aria-label", "El modelo está respondiendo");
+  const dots = named(node("div", "typing"), RESPONDING);
   dots.append(node("span"), node("span"), node("span"));
   box.append(dots);
   return box;
@@ -484,8 +506,18 @@ async function finishExecution(sessionId) {
     state.live = null;
     await reloadMessages();
     updateSendState();
+    if (sessionId === state.sessionId) announce(outcomeText());
   }
   renderSessions();
+}
+
+// Cómo terminó la última respuesta, para el lector de pantalla.
+function outcomeText() {
+  const last = state.messages[state.messages.length - 1];
+  const error = last?.role === "assistant" ? last.error : null;
+  if (!error) return "Respuesta lista";
+  if (error.kind === "aborted") return "Respuesta detenida";
+  return `Error: ${error.message || "El modelo devolvió un error."}`;
 }
 
 // Los eventos llegan ya traducidos por el motor (ver `Event` en src/chat.rs).
@@ -512,7 +544,7 @@ function handleEvent(event) {
       state.busy.add(sessionId);
       session.updatedAt = Date.now();
       renderSessions();
-      if (sessionId === state.sessionId) updateSendState();
+      if (sessionId === state.sessionId) { updateSendState(); announce(RESPONDING); }
       return;
     case "responseEnded":
       finishExecution(sessionId);
@@ -564,6 +596,7 @@ async function send() {
     state.busy.add(sessionId);
     renderSessions();
     updateSendState();
+    announce(RESPONDING);
     await renderThread(true);
     await invoke("send_prompt", { chatId: sessionId, text });
   } catch (error) {
@@ -571,6 +604,7 @@ async function send() {
     updateSendState();
     renderSessions();
     renderThread();
+    announce("");
     showNotice(`No se pudo enviar: ${errorText(error)}`);
     if (!el.input.value) { el.input.value = text; autoGrow(); updateSendState(); }
   }
@@ -600,7 +634,7 @@ async function loadIntegrations() {
     state.integrations = await invoke("list_providers");
     renderProviders();
   } catch (error) {
-    el.providerList.replaceChildren(node("div", "provider-error", errorText(error)));
+    el.providerList.replaceChildren(alertNode("provider-error", errorText(error)));
   }
 }
 
@@ -651,7 +685,13 @@ function renderProviders(failure) {
         }
       });
       box.append(form);
-      if (failure?.id === provider.id) box.append(node("div", "provider-error", failure.message));
+      if (failure?.id === provider.id) {
+        const problem = alertNode("provider-error", failure.message);
+        problem.id = "provider-error";
+        input.setAttribute("aria-invalid", "true");
+        input.setAttribute("aria-describedby", problem.id);
+        box.append(problem);
+      }
       setTimeout(() => input.focus(), 0);
     }
     el.providerList.append(box);

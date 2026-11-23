@@ -62,7 +62,7 @@ async function removeDir(dir) {
 // modelo, sin red ni cupo.
 const FAKE_ANSWER = "Respuesta del modelo de prueba.";
 
-async function startFakeModel(answer) {
+async function startFakeModel(answer, failure) {
   const requests = [];
   const server = createHttpServer((req, res) => {
     let body = "";
@@ -71,6 +71,11 @@ async function startFakeModel(answer) {
       try { requests.push(JSON.parse(body)); } catch { /* petición sin cuerpo JSON */ }
       const chunk = (delta, finish = null) =>
         `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 0, model: "fake", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+      if (failure) {
+        res.writeHead(401, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: { message: failure, type: "invalid_request_error", code: "invalid_api_key" } }));
+        return;
+      }
       res.writeHead(200, { "content-type": "text/event-stream" });
       res.write(chunk({ role: "assistant", content: answer }));
       res.write(chunk({}, "stop"));
@@ -111,9 +116,13 @@ export const test = base.extend({
   // Con `test.use({ fakeAnswer: "…" })` el modelo de prueba contesta ese texto.
   fakeAnswer: [FAKE_ANSWER, { option: true }],
 
-  fakeModel: async ({ useFakeModel, fakeAnswer }, use) => {
+  // Con `test.use({ fakeFailure: "…" })` el modelo de prueba rechaza cada
+  // petición con un 401 y ese mensaje, en vez de contestar.
+  fakeFailure: [null, { option: true }],
+
+  fakeModel: async ({ useFakeModel, fakeAnswer, fakeFailure }, use) => {
     if (!useFakeModel) return use(null);
-    const fake = await startFakeModel(fakeAnswer);
+    const fake = await startFakeModel(fakeAnswer, fakeFailure);
     await use(fake);
     await fake.close();
   },

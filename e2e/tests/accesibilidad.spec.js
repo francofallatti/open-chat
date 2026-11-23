@@ -290,3 +290,93 @@ test.describe("con una respuesta ancha del modelo de prueba", () => {
     await expect(page.locator("#composer")).toBeInViewport({ ratio: 1 });
   });
 });
+
+test("ACC-009 el error al guardar una clave es una alerta enlazada al campo", async ({ page }) => {
+  await page.locator("#providers-btn").click();
+  await page.locator("#provider-list .provider .button").first().click();
+  const key = page.locator("#provider-list .provider-form input");
+  await expect(key).toBeFocused();
+  // Una clave vacía la rechaza la app sin llamar al proveedor.
+  await page.keyboard.press("Enter");
+
+  const problem = page.locator("#provider-list [role='alert']");
+  await expect(problem).toHaveText("La clave está vacía");
+  const again = page.locator("#provider-list .provider-form input");
+  await expect(again).toHaveAttribute("aria-invalid", "true");
+  await expect(again).toHaveAttribute("aria-describedby", await problem.getAttribute("id"));
+});
+
+test("ACC-010 los avisos y el estado del motor llegan al lector de pantalla", async ({ page }) => {
+  const notice = page.locator("#notice");
+  await expect(notice).toHaveAttribute("role", "alert");
+  await expect(notice).toBeHidden();
+  // El aviso se muestra con la función que usa la app para todos sus errores.
+  await page.evaluate(() => showNotice("No se pudo enviar: prueba"));
+  await expect(page.getByRole("alert")).toHaveText("No se pudo enviar: prueba");
+
+  await expect(page.locator("#status")).toHaveAttribute("role", "status");
+  // La región de anuncios existe, no se ve y no ocupa lugar.
+  const announcer = page.locator("#announcer");
+  await expect(announcer).toHaveAttribute("role", "status");
+  const box = await announcer.boundingBox();
+  expect(box.width * box.height, "área de la región de anuncios").toBeLessThanOrEqual(1);
+});
+
+// Anota lo que pasa por la región de anuncios y los nombres de los puntos
+// animados, que duran menos que una consulta desde la suite.
+const recordAnnouncements = (page) => page.evaluate(() => {
+  const seen = (window.__seen = { announced: [], typing: new Set(), busy: new Set() });
+  const read = () => {
+    const text = document.querySelector("#announcer").textContent;
+    if (text && seen.announced.at(-1) !== text) seen.announced.push(text);
+    const name = (node) => `${node.getAttribute("role")}:${node.getAttribute("aria-label")}`;
+    document.querySelectorAll("#thread .typing").forEach((node) => seen.typing.add(name(node)));
+    document.querySelectorAll("#sessions .busy-dot").forEach((node) => seen.busy.add(name(node)));
+  };
+  new MutationObserver(read).observe(document.body, { childList: true, subtree: true, characterData: true });
+});
+const recorded = (page) => page.evaluate(() => ({
+  announced: window.__seen.announced, typing: [...window.__seen.typing], busy: [...window.__seen.busy],
+}));
+const chooseFakeModel = async (page, fakeModel) => {
+  await page.locator("#model-btn").click();
+  await page.locator("#model-search").fill(fakeModel.name);
+  await page.locator("#model-list .model-option").first().click();
+  await expect(page.locator("#model-label")).toHaveText(fakeModel.name);
+};
+
+test.describe("con el modelo de prueba", () => {
+  test.use({ useFakeModel: true });
+
+  test("ACC-011 el lector de pantalla se entera de que el modelo responde y de que terminó", async ({ page, fakeModel }) => {
+    await chooseFakeModel(page, fakeModel);
+    await recordAnnouncements(page);
+    await page.locator("#input").fill("hola");
+    await page.locator("#input").press("Enter");
+
+    await expect(page.locator("#announcer")).toHaveText("Respuesta lista", { timeout: 30_000 });
+    const seen = await recorded(page);
+    expect(seen.announced).toEqual(["El modelo está respondiendo", "Respuesta lista"]);
+    // Los puntos animados tienen rol y nombre: sin rol, el nombre no se lee.
+    expect(seen.typing).toEqual(["img:El modelo está respondiendo"]);
+    expect(seen.busy).toEqual(["img:Respuesta en curso"]);
+  });
+});
+
+test.describe("con un modelo de prueba que rechaza la petición", () => {
+  test.use({ useFakeModel: true, fakeFailure: "Clave de prueba rechazada" });
+
+  test("ACC-012 el error del modelo se anuncia con su mensaje", async ({ page, fakeModel }) => {
+    await chooseFakeModel(page, fakeModel);
+    await recordAnnouncements(page);
+    await page.locator("#input").fill("hola");
+    await page.locator("#input").press("Enter");
+
+    const problem = page.locator("#thread .msg-error");
+    await expect(problem).toBeVisible({ timeout: 60_000 });
+    // El texto propio del error, sin el detalle desplegable del proveedor.
+    const message = await problem.evaluate((box) => box.firstChild.textContent);
+    await expect(page.locator("#announcer")).toHaveText(`Error: ${message}`);
+    expect((await recorded(page)).announced[0]).toBe("El modelo está respondiendo");
+  });
+});
