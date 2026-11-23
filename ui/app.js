@@ -24,6 +24,7 @@ const state = {
   sessions: [],
   sessionId: null,
   messages: [],
+  loading: false,         // se están pidiendo los mensajes del chat recién abierto
   busy: new Set(),        // sesiones con una respuesta en curso
   live: null,             // respuesta que se está recibiendo: { messageId, parts[], node }
   integrations: [],
@@ -305,6 +306,7 @@ function newChat() {
   state.sessionId = null;
   state.messages = [];
   state.live = null;
+  state.loading = false;
   showNotice("");
   announce("");
   renderSessions();
@@ -328,6 +330,9 @@ async function openSession(id) {
     state.model = { id: session.model.id, provider: session.model.provider };
     renderModelButton();
   }
+  // El hilo anterior se quita ya: mientras llegan los mensajes se ve que está cargando.
+  state.loading = true;
+  renderThread();
   await reloadMessages(true);
   el.input.focus();
 }
@@ -341,8 +346,13 @@ async function reloadMessages(jumpToEnd = false) {
     const messages = await invoke("list_messages", { chatId: id });
     if (state.sessionId !== id) return; // el usuario cambió de chat mientras cargaba
     state.messages = messages || [];
+    state.loading = false;
     await renderThread(jumpToEnd);
   } catch (error) {
+    if (state.sessionId === id && state.loading) {
+      state.loading = false;
+      renderThread();
+    }
     showNotice(`No se pudieron cargar los mensajes: ${errorText(error)}`);
   }
 }
@@ -438,8 +448,14 @@ async function renderThread(jumpToEnd = false) {
   if (version !== threadVersion) return; // llegó un render más nuevo mientras se convertía el markdown
 
   const waiting = state.busy.has(state.sessionId) && !state.live;
-  if (state.live) nodes.push(state.live.node);
-  if (waiting) nodes.push(typingNode());
+  if (state.loading) {
+    const loading = node("div", "thread-loading", "Cargando el chat…");
+    loading.setAttribute("role", "status");
+    nodes.push(loading);
+  } else {
+    if (state.live) nodes.push(state.live.node);
+    if (waiting) nodes.push(typingNode());
+  }
 
   el.thread.replaceChildren(...nodes);
   el.main.classList.toggle("empty", !state.sessionId && !nodes.length);

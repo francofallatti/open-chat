@@ -58,3 +58,28 @@ test("SES-005 el botón de la barra lateral la oculta y la vuelve a mostrar", as
   await page.locator("#toggle-sidebar").click();
   await expect(page.locator("#app")).not.toHaveClass(/sidebar-hidden/);
 });
+
+test("SES-006 al abrir un chat el hilo muestra que está cargando hasta que llegan los mensajes", async ({ page }) => {
+  await seedChat(page, "chat de prueba");
+  // La carga dura menos que una consulta desde la suite: se anota lo que entra al hilo.
+  await page.evaluate(() => {
+    window.__added = [];
+    new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          window.__added.push({ role: node.getAttribute?.("role"), text: node.textContent, greeting: document.querySelector("#main").classList.contains("empty") });
+        }
+      }
+    }).observe(document.querySelector("#thread"), { childList: true });
+  });
+
+  await page.locator("#sessions .session-title").click();
+  await expect(page.locator("#chat-title")).toHaveText("chat de prueba");
+  await expect(page.locator("#input")).toBeFocused();
+
+  const added = await page.evaluate(() => window.__added);
+  // Lo primero que entra al hilo es el aviso de carga, con el saludo ya oculto.
+  expect(added[0]).toEqual({ role: "status", text: "Cargando el chat…", greeting: false });
+  // Con los mensajes cargados el aviso ya no está.
+  await expect(page.locator("#thread .thread-loading")).toHaveCount(0);
+});
