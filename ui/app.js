@@ -288,6 +288,8 @@ function renderSessions() {
   }
   const current = state.sessions.find((s) => s.id === state.sessionId);
   el.chatTitle.textContent = current ? sessionTitle(current) : "";
+  // Es el título de la página cuando hay un chat abierto; vacío, no se expone.
+  el.chatTitle.hidden = !current;
 }
 
 async function removeSession(session) {

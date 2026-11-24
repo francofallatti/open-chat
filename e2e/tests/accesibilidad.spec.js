@@ -415,3 +415,41 @@ test("ACC-013 cada botón cambia de aspecto mientras está apretado", async ({ p
   await expectPressed("#providers-dialog .icon-button", "Cerrar");
   await expect(page.locator("#providers-dialog")).toBeVisible();
 });
+
+test("ACC-014 todos los radios de borde salen de la escala definida", async ({ page }) => {
+  const { values, scale } = await page.evaluate(() => {
+    const found = [];
+    const walk = (rules) => {
+      for (const rule of rules) {
+        if (rule.cssRules?.length) walk(rule.cssRules);
+        const value = rule.style?.getPropertyValue("border-radius");
+        if (value) found.push(`${rule.selectorText}: ${value.trim()}`);
+      }
+    };
+    for (const sheet of document.styleSheets) walk(sheet.cssRules);
+    const root = getComputedStyle(document.documentElement);
+    const token = (name) => root.getPropertyValue(name).trim();
+    return { values: found, scale: ["--radius-s", "--radius-m", "--radius-l", "--radius-xl", "--radius-round"].map(token) };
+  });
+
+  expect(scale).toEqual(["6px", "8px", "12px", "16px", "999px"]);
+  expect(values.length, "reglas con radio de borde").toBeGreaterThan(20);
+  // Cada regla usa un paso de la escala; ninguna escribe un número propio.
+  const allowed = /: (var\(--radius-(s|m|l|xl|round)\)|calc\(var\(--radius-s\) \/ 2\))$/;
+  expect(values.filter((value) => !allowed.test(value))).toEqual([]);
+});
+
+test("ACC-015 siempre hay un único título principal: el saludo o el título del chat", async ({ page }) => {
+  const main = page.getByRole("heading", { level: 1 });
+  await expect(main).toHaveCount(1);
+  await expect(main).toHaveText("¿En qué te ayudo hoy?");
+
+  await seedChat(page, "chat de prueba");
+  await page.locator("#sessions .session-title").click();
+  await expect(main).toHaveCount(1);
+  await expect(main).toHaveText("chat de prueba");
+
+  await page.locator("#new-chat").click();
+  await expect(main).toHaveCount(1);
+  await expect(main).toHaveText("¿En qué te ayudo hoy?");
+});
