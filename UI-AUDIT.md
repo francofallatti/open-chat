@@ -22,8 +22,8 @@ Primera revisión: 20 de noviembre de 2026, leyendo el código y calculando los 
 
 ## Prioridad baja: identidad y consistencia
 
-- [ ] **10. Se parece a la app de Claude** (R-30). La paleta crema y carbón usa los mismos tonos y el saludo en serif centrado es el mismo gesto. Falta decidir si se mantiene o se le da identidad propia.
-- [ ] **11. Falta `DESIGN.md`** (R-37). Sin dirección escrita, cada cambio visual es un borrador.
+- [ ] **10. Se parece a la app de Claude** (R-30). La paleta crema y carbón usa los mismos tonos y el saludo en serif centrado es el mismo gesto. Decidido el 24 de noviembre de 2026: identidad propia sobre la base actual. Falta aplicarlo: neutros grises con tinte verde y saludo alineado a la izquierda, según [DESIGN.md](DESIGN.md).
+- [x] **11. Falta `DESIGN.md`** (R-37). Sin dirección escrita, cada cambio visual era un borrador. Ahora [DESIGN.md](DESIGN.md) fija identidad, carácter, paleta con contraste comprobado, tipografía, forma y movimiento.
 - [x] **12. Radios y títulos** (R-11, R-39). Había once radios de borde distintos sin una escala. Ahora son cinco, definidos una sola vez: 6, 8, 12 y 16 px, y el redondo. Con un chat abierto no quedaba ningún `h1`; ahora el título del chat es el `h1` y el saludo lo es en la pantalla inicial. Casos: `ACC-014` y `ACC-015`.
 - [x] **14. Falta un control para elegir el tema** (R-21). La app seguía el tema de Windows y no dejaba cambiarlo desde adentro. Ahora hay un selector al pie de la barra lateral con tres opciones (Sistema, Claro, Oscuro) que recuerda la elección. Lo pidió el usuario al revisar el pull request del 2. Casos: `TEMA-001` a `TEMA-005`.
 
