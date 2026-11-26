@@ -10,6 +10,7 @@ const el = {
   input: $("input"), send: $("send"), stop: $("stop"), notice: $("notice"), announcer: $("announcer"),
   modelBtn: $("model-btn"), modelLabel: $("model-label"), modelMenu: $("model-menu"),
   modelSearch: $("model-search"), modelList: $("model-list"),
+  effortPicker: $("effort-picker"), effort: $("effort"),
   status: $("status"), statusText: $("status-text"),
   providersDialog: $("providers-dialog"), providerSearch: $("provider-search"), providerList: $("provider-list"),
 };
@@ -20,7 +21,7 @@ const FEATURED_PROVIDERS = ["deepseek", "moonshotai", "openrouter", "groq", "zai
 const state = {
   ready: false,
   models: [],
-  model: null,            // { id, provider }
+  model: null,            // { id, provider, effort? }
   sessions: [],
   sessionId: null,
   messages: [],
@@ -122,6 +123,7 @@ async function loadModels() {
   if (!known(state.model)) {
     state.model = known(saved) ? saved : known(fallback) ? fallback : models[0] ? { id: models[0].id, provider: models[0].provider } : null;
   }
+  state.model = withKnownEffort(state.model);
   renderModelButton();
   if (!el.modelMenu.hidden) renderModelList(true);
 }
@@ -129,7 +131,34 @@ async function loadModels() {
 function renderModelButton() {
   const current = state.models.find((m) => sameModel(m, state.model));
   el.modelLabel.textContent = current ? current.name : "Sin modelos disponibles";
+  renderEffort(current?.efforts || []);
   updateSendState();
+}
+
+/* ---------- esfuerzo de razonamiento ---------- */
+
+// Nombres de los esfuerzos conocidos. Uno que no esté acá se muestra tal como lo publica el modelo.
+const EFFORT_LABELS = { none: "Ninguno", minimal: "Mínimo", low: "Bajo", medium: "Medio", high: "Alto", xhigh: "Muy alto", max: "Máximo" };
+
+function effortLabel(id) {
+  return EFFORT_LABELS[id] || id;
+}
+
+// La referencia a un modelo, con el esfuerzo solo si ese modelo lo publica: el
+// motor acepta uno desconocido y después no responde.
+function withKnownEffort(ref) {
+  if (!ref) return null;
+  const efforts = state.models.find((m) => sameModel(m, ref))?.efforts || [];
+  const model = { id: ref.id, provider: ref.provider };
+  if (efforts.includes(ref.effort)) model.effort = ref.effort;
+  return model;
+}
+
+function renderEffort(efforts) {
+  el.effortPicker.hidden = !efforts.length;
+  // Sin elegir, el modelo usa su propio esfuerzo.
+  el.effort.replaceChildren(new Option("Predeterminado", ""), ...efforts.map((id) => new Option(effortLabel(id), id)));
+  el.effort.value = state.model?.effort || "";
 }
 
 // keepActive: la lista se vuelve a dibujar porque cambió el catálogo, no porque
@@ -165,7 +194,8 @@ function renderModelList(keepActive = false) {
       option.dataset.key = `${m.provider}/${m.id}`;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", String(sameModel(m, state.model)));
-      option.addEventListener("click", () => chooseModel({ id: m.id, provider: m.provider }));
+      // El esfuerzo elegido se conserva si el modelo nuevo también lo publica.
+      option.addEventListener("click", () => chooseModel({ id: m.id, provider: m.provider, effort: state.model?.effort }));
       option.addEventListener("pointermove", () => setActiveOption(option, false));
       group.append(option);
     }
@@ -234,20 +264,26 @@ function toggleModelMenu(open) {
   }
 }
 
-async function chooseModel(model) {
-  state.model = model;
-  localStorage.setItem(MODEL_KEY, JSON.stringify(model));
-  toggleModelMenu(false);
+// Deja elegido un modelo con su esfuerzo, lo recuerda y lo aplica al chat abierto.
+async function applyModel(model, problem) {
+  state.model = withKnownEffort(model);
+  localStorage.setItem(MODEL_KEY, JSON.stringify(state.model));
   renderModelButton();
-  el.input.focus();
-  if (state.sessionId) {
-    try {
-      await invoke("set_chat_model", { chatId: state.sessionId, model });
-      showNotice("");
-    } catch (error) {
-      showNotice(`No se pudo cambiar el modelo: ${errorText(error)}`);
-    }
+  const session = state.sessions.find((s) => s.id === state.sessionId);
+  if (!session) return;
+  try {
+    await invoke("set_chat_model", { chatId: session.id, model: state.model });
+    session.model = state.model; // al volver a este chat se ve lo que quedó elegido
+    showNotice("");
+  } catch (error) {
+    showNotice(`${problem}: ${errorText(error)}`);
   }
+}
+
+async function chooseModel(model) {
+  toggleModelMenu(false);
+  el.input.focus();
+  await applyModel(model, "No se pudo cambiar el modelo");
 }
 
 /* ---------- lista de chats ---------- */
@@ -330,7 +366,7 @@ async function openSession(id) {
 
   const session = state.sessions.find((s) => s.id === id);
   if (session?.model && state.models.some((m) => sameModel(m, session.model))) {
-    state.model = { id: session.model.id, provider: session.model.provider };
+    state.model = withKnownEffort(session.model);
     renderModelButton();
   }
   // El hilo anterior se quita ya: mientras llegan los mensajes se ve que está cargando.
@@ -419,7 +455,8 @@ async function proseBlock(text) {
 
 function modelName(ref) {
   const model = state.models.find((m) => sameModel(m, ref));
-  return model ? model.name : ref?.id || "";
+  const name = model ? model.name : ref?.id || "";
+  return ref?.effort ? `${name} · esfuerzo: ${effortLabel(ref.effort).toLowerCase()}` : name;
 }
 
 async function assistantNode(message) {
@@ -787,6 +824,7 @@ $("toggle-sidebar").addEventListener("click", () => el.app.classList.toggle("sid
 $("providers-btn").addEventListener("click", openProviders);
 el.providerSearch.addEventListener("input", () => renderProviders());
 el.modelBtn.addEventListener("click", () => toggleModelMenu(el.modelMenu.hidden));
+el.effort.addEventListener("change", () => applyModel({ ...state.model, effort: el.effort.value }, "No se pudo cambiar el esfuerzo"));
 el.modelSearch.addEventListener("input", () => renderModelList());
 el.modelSearch.addEventListener("keydown", modelSearchKey);
 // Un clic en la lista no le quita el foco al buscador.

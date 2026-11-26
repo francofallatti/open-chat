@@ -34,6 +34,8 @@ pub const TESTED_SERIES: (u64, u64) = (2, 3);
 
 /// Agente con el que conversan los chats de OpenChat. Su `system` reemplaza las
 /// instrucciones de programación del agente por defecto de OpenCode (`build`).
+/// Variante con la que OpenCode nombra "el esfuerzo propio del modelo".
+const DEFAULT_VARIANT: &str = "default";
 const AGENT_ID: &str = "openchat";
 const AGENT_SYSTEM: &str = "You are the assistant in OpenChat, a desktop chat app. You are having a conversation with a person: answer what they ask, clearly and directly.
 
@@ -296,6 +298,7 @@ impl Engine {
                     provider: provider.to_owned(),
                     provider_name: provider_name(provider),
                     name: text(m, "name").unwrap_or(id).to_owned(),
+                    efforts: own_efforts(m),
                 })
             })
             .collect();
@@ -450,11 +453,27 @@ fn own_model_ref(model: &Value) -> Option<ModelRef> {
     Some(ModelRef {
         id: text(model, "id")?.to_owned(),
         provider: text(model, "providerID")?.to_owned(),
+        effort: text(model, "variant").filter(|v| *v != DEFAULT_VARIANT).map(str::to_owned),
     })
 }
 
+/// Sin `variant`, OpenCode usa `default`: no le pide un esfuerzo al proveedor.
 fn engine_model_ref(model: &ModelRef) -> Value {
-    json!({ "id": model.id, "providerID": model.provider })
+    let mut reference = json!({ "id": model.id, "providerID": model.provider });
+    if let Some(effort) = &model.effort {
+        reference["variant"] = json!(effort);
+    }
+    reference
+}
+
+/// OpenCode publica el esfuerzo de razonamiento como variantes del modelo
+/// (`minimal` a `max`, según el modelo).
+fn own_efforts(model: &Value) -> Vec<String> {
+    list(model.get("variants").unwrap_or(&Value::Null))
+        .filter_map(|variant| text(variant, "id"))
+        .filter(|id| *id != DEFAULT_VARIANT)
+        .map(str::to_owned)
+        .collect()
 }
 
 fn own_chat(session: &Value) -> Option<Chat> {
@@ -786,6 +805,42 @@ mod tests {
     }
 
     #[test]
+    fn translates_the_reasoning_effort_both_ways() {
+        // Del motor: la variante elegida es el esfuerzo; `default` es no haber elegido.
+        let chosen = own_model_ref(&json!({ "id": "m", "providerID": "p", "variant": "high" })).unwrap();
+        assert_eq!(chosen.effort.as_deref(), Some("high"));
+        assert_eq!(
+            serde_json::to_value(&chosen).unwrap(),
+            json!({ "id": "m", "provider": "p", "effort": "high" })
+        );
+        let unset = own_model_ref(&json!({ "id": "m", "providerID": "p", "variant": "default" })).unwrap();
+        assert_eq!(unset.effort, None);
+
+        // Al motor: sin esfuerzo no se manda variante.
+        assert_eq!(engine_model_ref(&chosen), json!({ "id": "m", "providerID": "p", "variant": "high" }));
+        assert_eq!(engine_model_ref(&unset), json!({ "id": "m", "providerID": "p" }));
+
+        // De la vista: el esfuerzo es opcional.
+        let from_view: ModelRef = serde_json::from_value(json!({ "id": "m", "provider": "p" })).unwrap();
+        assert_eq!(from_view, unset);
+    }
+
+    #[test]
+    fn lists_the_efforts_a_model_publishes() {
+        // Forma capturada de `/api/model` en OpenCode 2.3.2.
+        let model = json!({
+            "id": "hy4-flash-free",
+            "variants": [
+                { "id": "none", "settings": { "reasoningEffort": "none" } },
+                { "id": "high", "settings": { "reasoningEffort": "high" } },
+            ],
+        });
+        assert_eq!(own_efforts(&model), ["none", "high"]);
+        assert!(own_efforts(&json!({ "id": "big-pickle", "variants": [] })).is_empty());
+        assert!(own_efforts(&json!({ "id": "sin-campo" })).is_empty());
+    }
+
+    #[test]
     fn translates_a_conversation_and_drops_control_messages() {
         let messages = own_messages(&[
             json!({ "id": "msg_1", "type": "user", "text": "hola" }),
@@ -911,7 +966,7 @@ mod tests {
         let wanted = std::env::var("OPENCHAT_TEST_MODEL")
             .unwrap_or_else(|_| "opencode/deepseek-v4.1-flash-free".to_owned());
         let (provider, id) = wanted.split_once('/').expect("formato proveedor/modelo");
-        let model = ModelRef { id: id.to_owned(), provider: provider.to_owned() };
+        let model = ModelRef { id: id.to_owned(), provider: provider.to_owned(), effort: None };
 
         let data_dir = std::env::temp_dir().join(format!("openchat-test-{}", uuid::Uuid::new_v4().simple()));
         fs::create_dir_all(&data_dir).unwrap();

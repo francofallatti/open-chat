@@ -140,3 +140,98 @@ test("MOD-007 el lector de pantalla recibe una lista de opciones y cuál está a
   await expect(search).toHaveAttribute("aria-activedescendant", activeId);
   await expect(options.last()).toHaveAttribute("id", activeId);
 });
+
+test.describe("esfuerzo de razonamiento, con el modelo de prueba", () => {
+  test.use({ useFakeModel: true });
+
+  const pickModel = async (page, name) => {
+    await page.locator("#model-btn").click();
+    await page.locator("#model-search").fill(name);
+    await page.locator("#model-list .model-option").first().click();
+    await expect(page.locator("#model-label")).toHaveText(name);
+  };
+  // Envía un mensaje y espera a que termine la respuesta número `count` del chat.
+  const ask = async (page, fakeModel, text, count = 1) => {
+    await page.locator("#input").fill(text);
+    await page.locator("#input").press("Enter");
+    await expect(page.locator("#thread .msg.assistant .prose")).toHaveCount(count, { timeout: 30_000 });
+    await expect(page.locator("#stop")).toBeHidden();
+    await expect(page.locator("#thread .msg-error")).toHaveCount(0);
+    // La petición del chat es la que termina con el mensaje de la persona.
+    const request = fakeModel.requests.findLast((r) => JSON.stringify(r.messages.at(-1)).includes(text));
+    expect(request, "el modelo de prueba no recibió el mensaje").toBeTruthy();
+    return request;
+  };
+
+  test("MOD-011 el selector de esfuerzo ofrece lo que publica el modelo y no aparece si no publica nada", async ({ page, fakeModel }) => {
+    const effort = page.getByLabel("Esfuerzo de razonamiento");
+
+    await pickModel(page, fakeModel.name);
+    await expect(effort).toBeVisible();
+    // Sin elegir queda el esfuerzo propio del modelo, y los demás van en el orden publicado.
+    await expect(effort).toHaveValue("");
+    await expect(effort.locator("option")).toHaveText(["Predeterminado", "Mínimo", "Alto", "Máximo"]);
+    expect(await effort.locator("option").evaluateAll((options) => options.map((o) => o.value))).toEqual(["", ...fakeModel.efforts]);
+
+    await pickModel(page, fakeModel.plainName);
+    await expect(effort).toBeHidden();
+  });
+
+  test("MOD-012 el esfuerzo elegido le llega al modelo y queda anotado en la respuesta", async ({ page, fakeModel }) => {
+    const effort = page.getByLabel("Esfuerzo de razonamiento");
+    await pickModel(page, fakeModel.name);
+    // Se elige con el teclado, sin abrir la lista.
+    await effort.focus();
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(effort).toHaveValue("high");
+
+    const first = await ask(page, fakeModel, "primera pregunta");
+    expect(first.reasoning_effort).toBe("high");
+    await expect(page.locator("#thread .msg.assistant .msg-model")).toHaveText(`${fakeModel.name} · esfuerzo: alto`);
+
+    // Con el chat abierto, el cambio vale para el mensaje siguiente.
+    await effort.selectOption("max");
+    const second = await ask(page, fakeModel, "segunda pregunta", 2);
+    expect(second.reasoning_effort).toBe("max");
+
+    // «Predeterminado» no le pide ningún esfuerzo al modelo.
+    await effort.selectOption("");
+    const third = await ask(page, fakeModel, "tercera pregunta", 3);
+    expect(third.reasoning_effort).toBeUndefined();
+    await expect(page.locator("#thread .msg.assistant .msg-model")).toHaveText([
+      `${fakeModel.name} · esfuerzo: alto`,
+      `${fakeModel.name} · esfuerzo: máximo`,
+      fakeModel.name,
+    ]);
+    await expect(page.locator("#notice")).toBeHidden();
+  });
+
+  test("MOD-013 el esfuerzo se recuerda al recargar, vuelve con cada chat y se suelta si el modelo nuevo no lo publica", async ({ page, fakeModel }) => {
+    const effort = page.getByLabel("Esfuerzo de razonamiento");
+    await pickModel(page, fakeModel.name);
+    await effort.selectOption("max");
+
+    await page.reload();
+    await appReady(page);
+    await expect(page.locator("#model-label")).toHaveText(fakeModel.name);
+    await expect(effort).toHaveValue("max");
+
+    // Un chat con «Máximo» y otro con «Mínimo»: cada uno conserva el suyo.
+    await ask(page, fakeModel, "chat con máximo");
+    await page.locator("#new-chat").click();
+    await effort.selectOption("minimal");
+    const request = await ask(page, fakeModel, "chat con mínimo");
+    expect(request.reasoning_effort).toBe("minimal");
+
+    await page.locator("#sessions .session-title", { hasText: "chat con máximo" }).click();
+    await expect(page.locator("#thread .msg.user")).toHaveText("chat con máximo");
+    await expect(effort).toHaveValue("max");
+
+    // El otro modelo no publica esfuerzos: no se le manda el que estaba elegido.
+    await pickModel(page, fakeModel.plainName);
+    await expect(effort).toBeHidden();
+    const plain = await ask(page, fakeModel, "pregunta al modelo básico", 2);
+    expect(plain.reasoning_effort).toBeUndefined();
+  });
+});

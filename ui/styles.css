@@ -93,8 +93,8 @@ html, body {
   overflow: hidden;
 }
 
-button, input, textarea { font: inherit; color: inherit; }
-button { cursor: pointer; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button, select, label[for] { cursor: pointer; }
 svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
@@ -286,7 +286,7 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 ::placeholder { color: var(--text-3); opacity: 1; }
 .composer-row { display: flex; align-items: center; gap: 8px; }
 
-.model-picker { position: relative; margin-right: auto; margin-left: -8px; min-width: 0; }
+.model-picker { position: relative; margin-left: -8px; min-width: 0; }
 #model-btn {
   display: flex; align-items: center; gap: 4px; max-width: 100%;
   border: 0; background: none; border-radius: var(--radius-m); padding: 5px 8px; font-size: 13.5px; color: var(--text-2);
@@ -312,12 +312,24 @@ svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width:
 .model-option[aria-selected="true"]::after { content: "✓"; color: var(--accent); font-weight: 700; }
 .model-empty { padding: 12px 10px; font-size: 13px; color: var(--text-3); }
 
+/* Esfuerzo de razonamiento: mismo tono callado que el botón del modelo. Solo se
+   muestra si el modelo elegido publica esfuerzos. */
+.effort-picker { display: flex; align-items: center; gap: 6px; flex: none; }
+.effort-picker label { font-size: 13px; color: var(--text-3); }
+#effort {
+  field-sizing: content; /* ancho del esfuerzo elegido, no del nombre más largo */
+  border: 0; background: none; border-radius: var(--radius-m); padding: 5px 4px; font-size: 13.5px; color: var(--text-2);
+}
+#effort:hover { background: var(--surface-2); color: var(--text); }
+#effort:active { background: var(--surface-3); color: var(--text); }
+#effort option { background: var(--surface); color: var(--text); }
+
 input[type="search"] {
   width: 100%; border: 1px solid var(--border-control); background: var(--bg); border-radius: var(--radius-m); padding: 6px 10px; font-size: 14px;
 }
 
 .send {
-  width: 34px; height: 34px; border-radius: var(--radius-m); border: 0; flex: none;
+  width: 34px; height: 34px; border-radius: var(--radius-m); border: 0; flex: none; margin-left: auto;
   display: grid; place-items: center; background: var(--accent); color: var(--on-accent);
 }
 .send svg { stroke-width: 2; }

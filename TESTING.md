@@ -96,6 +96,8 @@ test.describe("con el modelo de prueba", () => {
 
 El motor arranca con un proveedor que apunta a un servidor de la propia suite. Aparece en el selector como `fakeModel.name`, contesta siempre `fakeModel.answer` y deja en `fakeModel.requests` cada petición que recibió. Estos casos no llevan `@modelo`: corren también en `npm run test:rapido`.
 
+El modelo de prueba publica los esfuerzos de razonamiento de `fakeModel.efforts`. El mismo proveedor trae otro modelo, `fakeModel.plainName`, que no publica ninguno.
+
 Más opciones para el mismo `test.use`:
 
 | Opción | Qué hace el modelo de prueba |

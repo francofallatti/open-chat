@@ -23,7 +23,7 @@ Objetivo: que la interfaz no sepa que detrás hay OpenCode.
 ## Fase 2 — Chat sólido
 
 - [x] Agente propio de conversación, sin las instrucciones de programación que OpenCode envía por defecto (agente `openchat`, ver la decisión 6).
-- [ ] Selector de esfuerzo de razonamiento (las variantes `minimal` a `max` que ya publica cada modelo).
+- [x] Selector de esfuerzo de razonamiento (las variantes `minimal` a `max` que ya publica cada modelo).
 - [ ] Etiquetar en el selector: gratis, de pago, cupo diario, tamaño de contexto.
 - [ ] Mostrar el razonamiento del modelo cuando lo emite.
 - [ ] Mensajes de error claros, con la acción a tomar.
