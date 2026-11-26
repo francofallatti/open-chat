@@ -94,7 +94,25 @@ test.describe("con el modelo de prueba", () => {
   test("CHAT-004 …", async ({ page, fakeModel }) => {
 ```
 
-El motor arranca con un proveedor que apunta a un servidor de la propia suite. Aparece en el selector como `fakeModel.name`, contesta siempre `fakeModel.answer` y deja en `fakeModel.requests` cada petición que recibió. Para que conteste otro texto, por ejemplo markdown con un bloque de código, se agrega `fakeAnswer: "…"` al `test.use`. Para que rechace cada petición con un error en vez de contestar, se agrega `fakeFailure: "mensaje del error"`. Estos casos no llevan `@modelo`: corren también en `npm run test:rapido`.
+El motor arranca con un proveedor que apunta a un servidor de la propia suite. Aparece en el selector como `fakeModel.name`, contesta siempre `fakeModel.answer` y deja en `fakeModel.requests` cada petición que recibió. Estos casos no llevan `@modelo`: corren también en `npm run test:rapido`.
+
+Más opciones para el mismo `test.use`:
+
+| Opción | Qué hace el modelo de prueba |
+| --- | --- |
+| `fakeAnswer: "…"` | Contesta ese texto, por ejemplo markdown con un bloque de código |
+| `fakeFailure: "mensaje"` | Rechaza cada petición con un 401 y ese mensaje |
+| `fakeFailure: { status, message, type, code, headers }` | Rechaza con esa forma. Un 429 de tipo `insufficient_quota` con `retry-after` es un cupo agotado |
+| `fakeStall: true` | Manda el comienzo de la respuesta y no la termina, para poder detenerla. `fakeModel.interrupted` cuenta las que cortó el motor |
+| `fakeKey: "…"` | El proveedor arranca sin conectar y solo contesta a esa clave. Se conecta desde el diálogo, como «Prueba» (`fakeModel.providerName`). `fakeModel.keys` guarda la clave de cada petición |
+
+### Casos con otra versión del motor
+
+Con `test.use({ engineVersion: "9.9.0" })` el motor informa esa versión en lugar de la suya. Entre OpenChat y el CLI de OpenCode se pone un intermediario (`e2e/support/engine-proxy.js`) que solo cambia la versión de `/api/info`; todo lo demás lo sigue contestando el motor real.
+
+### Lo que un caso no debe hacer de verdad
+
+Abrir un enlace lanza el navegador de quien corre la suite. El caso de los enlaces (`CHAT-009`) anota la petición de la vista a la app y la contesta él mismo, así que comprueba que la vista pide abrir el enlace y que la ventana no navega, pero no que el navegador se abra.
 
 ## Escribir un caso
 
@@ -130,11 +148,6 @@ La sesión que escribe el código no corre `/qa` ni la suite completa: corre sol
 
 ## Pendientes de automatizar
 
-Casos que hoy se comprueban a mano:
+Lo que hoy se comprueba a mano:
 
-- Detener una respuesta en curso con el botón «Detener».
-- Conectar un proveedor con una clave válida y con una inválida.
-- Mensaje de error del modelo por cupo agotado, con el tiempo de espera.
-- Aviso de versión del motor fuera de la serie probada.
-- Bloques de código en la respuesta y su botón «Copiar».
-- Los enlaces de una respuesta se abren en el navegador y no dentro de la app.
+- Al hacer clic en un enlace de una respuesta, el navegador del sistema se abre en esa dirección. `CHAT-009` cubre el resto del recorrido.
