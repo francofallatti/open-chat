@@ -112,8 +112,15 @@ test("MOD-010 el menú de modelos entra en la ventana y recorrerlo no la desplaz
   }));
   expect(scrolled, "desplazamiento de la ventana").toBe(0);
   expect(bottom, "borde inferior del menú").toBeLessThanOrEqual(height);
-  // La última opción quedó a la vista dentro de la lista.
-  await expect(page.locator("#model-list .model-option.active")).toBeInViewport({ ratio: 1 });
+  // La última opción quedó a la vista dentro de la lista. Se mide con un píxel
+  // de margen: con la pantalla al 150 % el desplazamiento se ajusta a píxeles
+  // físicos y la opción puede pasar el borde por una fracción que no se ve.
+  const hidden = () => page.evaluate(() => {
+    const list = document.querySelector("#model-list").getBoundingClientRect();
+    const option = document.querySelector("#model-list .model-option.active").getBoundingClientRect();
+    return Math.max(list.top - option.top, option.bottom - list.bottom);
+  });
+  await expect.poll(hidden, "píxeles de la opción activa fuera de la lista").toBeLessThanOrEqual(1);
 });
 
 test("MOD-007 el lector de pantalla recibe una lista de opciones y cuál está activa", async ({ page }) => {
