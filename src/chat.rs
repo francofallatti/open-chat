@@ -10,6 +10,10 @@ use serde::{Deserialize, Serialize};
 pub struct ModelRef {
     pub id: String,
     pub provider: String,
+    /// Esfuerzo de razonamiento elegido, uno de los `efforts` del modelo.
+    /// Sin valor, el modelo usa el suyo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -19,6 +23,9 @@ pub struct Model {
     pub provider: String,
     pub provider_name: String,
     pub name: String,
+    /// Esfuerzos de razonamiento que se pueden elegir, en el orden en que el
+    /// modelo los publica. Vacío si no admite elegir.
+    pub efforts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

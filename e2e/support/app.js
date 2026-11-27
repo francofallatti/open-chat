@@ -69,6 +69,7 @@ function realEngineCli() {
 // motor le envía y contesta siempre lo mismo: sirve para comprobar qué recibe el
 // modelo, sin red ni cupo.
 const FAKE_ANSWER = "Respuesta del modelo de prueba.";
+const FAKE_EFFORTS = ["minimal", "high", "max"];
 
 async function startFakeModel({ answer, failure, stall, key }) {
   const requests = [];
@@ -112,6 +113,10 @@ async function startFakeModel({ answer, failure, stall, key }) {
     /** Nombre del proveedor en el selector y en el diálogo de proveedores. */
     providerName: "Prueba",
     answer,
+    /** Esfuerzos de razonamiento que publica, en el orden del selector. */
+    efforts: FAKE_EFFORTS,
+    /** Otro modelo del mismo proveedor, que no publica esfuerzos. */
+    plainName: "Básico sin esfuerzos",
     /** Cuerpos de las peticiones recibidas, en orden. */
     requests,
     /** Clave con la que llegó cada petición, en orden. */
@@ -130,6 +135,14 @@ async function startFakeModel({ answer, failure, stall, key }) {
               name: "Modelo de prueba",
               capabilities: { tools: true, input: ["text"], output: ["text"] },
               limit: { context: 100000, output: 4000 },
+              // Sin esta lista el motor le pone `low`, `medium` y `high` por su cuenta.
+              variants: FAKE_EFFORTS.map((id) => ({ id, settings: { reasoningEffort: id } })),
+            },
+            plain: {
+              name: "Básico sin esfuerzos",
+              capabilities: { tools: true, input: ["text"], output: ["text"] },
+              limit: { context: 100000, output: 4000 },
+              variants: [],
             },
           },
         },
